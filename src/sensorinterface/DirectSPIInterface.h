@@ -30,27 +30,50 @@
 
 namespace SlimeVR {
 
+/**
+ * A single SPI bus, optionally on explicit pins.
+ *
+ * Pass -1 for sck/miso/mosi to keep the core's default pins for the SoC. This is what
+ * the DIRECT_SPI(...) descriptor does, so boards that predate configurable pins behave
+ * exactly as before.
+ *
+ * The bus is held as a pointer, not a reference: SensorInterfaceManager caches these by
+ * value-copied constructor arguments, so a reference member would bind to a temporary.
+ * See docs/dev/DECISIONS.md DEC-005.
+ */
 class DirectSPIInterface : public SensorInterface {
 public:
-	DirectSPIInterface(SPIClass& spiClass, SPISettings spiSettings);
+	static constexpr int8_t PinDefault = -1;
+
+	DirectSPIInterface(
+		SPIClass* spiClass,
+		SPISettings spiSettings,
+		int8_t sck = PinDefault,
+		int8_t miso = PinDefault,
+		int8_t mosi = PinDefault
+	);
+
 	bool init() final;
 	void swapIn() final;
 
 	void beginTransaction(PinInterface* csPin);
 	void endTransaction(PinInterface* csPin);
 
-	[[nodiscard]] std::string toString() const final { return std::string{"SPI"}; }
+	[[nodiscard]] std::string toString() const final;
 
 	template <typename... Args>
 	auto transfer(Args... args) {
-		return m_spiClass.transfer(args...);
+		return m_spiClass->transfer(args...);
 	}
 
 	const SPISettings& getSpiSettings();
 
 private:
-	SPIClass& m_spiClass;
+	SPIClass* m_spiClass;
 	SPISettings m_spiSettings;
+	int8_t m_sck;
+	int8_t m_miso;
+	int8_t m_mosi;
 };
 
 }  // namespace SlimeVR

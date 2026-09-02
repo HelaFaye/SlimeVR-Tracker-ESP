@@ -30,6 +30,7 @@
 #include <map>
 #include <optional>
 
+#include "ATTinyCSInterface.h"
 #include "DirectPinInterface.h"
 #include "I2CPCAInterface.h"
 #include "I2CWireSensorInterface.h"
@@ -41,10 +42,6 @@
 #include "sensorinterface/SPIImpl.h"
 
 bool operator<(const SPISettings& lhs, const SPISettings& rhs);
-bool operator<(const SPIClass& lhs, const SPIClass& rhs);
-
-bool operator<(const SPISettings& lhs, const SPISettings& rhs);
-bool operator<(const SPIClass& lhs, const SPIClass& rhs);
 
 namespace SlimeVR {
 
@@ -97,6 +94,8 @@ public:
 	inline auto& i2cImpl() { return i2cImpls; }
 	inline auto& directSPIInterface() { return directSPIInterfaces; }
 	inline auto& spiImpl() { return spiImpls; }
+	inline auto& attinyCSBus() { return attinyCSBuses; }
+	inline auto& attinyCSPinInterface() { return attinyCSPinInterfaces; }
 
 private:
 	SensorInterface<DirectPinInterface, int> directPinInterfaces{[](int pin) {
@@ -106,8 +105,18 @@ private:
 	SensorInterface<I2CWireSensorInterface, int, int> i2cWireInterfaces;
 	SensorInterface<I2CPCASensorInterface, int, int, int, int> pcaWireInterfaces;
 	SensorInterface<Sensors::I2CImpl, uint8_t> i2cImpls;
-	SensorInterface<DirectSPIInterface, SPIClass, SPISettings> directSPIInterfaces;
+	// Keyed on the bus pointer rather than a copy of SPIClass: the cache stores its key
+	// by value, so a copied SPIClass would leave DirectSPIInterface referring to a dead
+	// object. Pins are part of the key so two buses on one peripheral stay distinct.
+	SensorInterface<DirectSPIInterface, SPIClass*, SPISettings, int8_t, int8_t, int8_t>
+		directSPIInterfaces;
 	SensorInterface<Sensors::SPIImpl, DirectSPIInterface*, PinInterface*> spiImpls;
+	SensorInterface<ATTinyCSBus, uint8_t, uint8_t, uint8_t, int8_t> attinyCSBuses;
+	SensorInterface<ATTinyCSPinInterface, ATTinyCSBus*, uint8_t, uint8_t>
+		attinyCSPinInterfaces{[](ATTinyCSBus* bus, uint8_t nodeId, uint8_t channel) {
+			return bus != nullptr && nodeId >= ATTinyCS::MinNodeId
+				&& nodeId <= ATTinyCS::MaxNodeId && channel < ATTinyCS::MaxChannels;
+		}};
 };
 
 }  // namespace SlimeVR

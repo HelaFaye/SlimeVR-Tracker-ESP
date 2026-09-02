@@ -1,0 +1,300 @@
+/*
+	SlimeVR Code is placed under the MIT license
+	Copyright (c) 2026 SlimeVR Contributors
+
+	Permission is hereby granted, free of charge, to any person obtaining a copy
+	of this software and associated documentation files (the "Software"), to deal
+	in the Software without restriction, including without limitation the rights
+	to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+	copies of the Software, and to permit persons to whom the Software is
+	furnished to do so, subject to the following conditions:
+
+	The above copyright notice and this permission notice shall be included in
+	all copies or substantial portions of the Software.
+
+	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+	IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+	FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+	AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+	LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+	OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+	THE SOFTWARE.
+*/
+#include "ATTinyCSInterface.h"
+
+#include <Wire.h>
+
+#include "I2CWireSensorInterface.h"
+
+namespace SlimeVR {
+
+using namespace ATTinyCS;
+
+ATTinyCSBus::ATTinyCSBus(
+	uint8_t sclPin,
+	uint8_t sdaPin,
+	uint8_t baseAddress,
+	int8_t strobePin
+)
+	: m_sclPin(sclPin)
+	, m_sdaPin(sdaPin)
+	, m_baseAddress(baseAddress)
+	, m_strobePin(strobePin) {}
+
+void ATTinyCSBus::swapIn() {
+	// Cheap when the bus is already on these pins, and necessary when the tracker also
+	// has locally wired I2C sensors on a different pin pair.
+	swapI2C(m_sclPin, m_sdaPin);
+}
+
+bool ATTinyCSBus::init() {
+	// The unicast addresses run from base+1 to base+MaxNodeId, so both ends of that
+	// range have to stay inside the addresses the I2C spec leaves to us.
+	m_addressValid
+		= m_baseAddress >= AddressMin && (m_baseAddress + MaxNodeId) <= AddressMax;
+
+	if (!m_addressValid) {
+		m_Logger.error(
+			"Base address 0x%02X is out of range: nodes occupy 0x%02X-0x%02X and the "
+			"usable I2C range is 0x%02X-0x%02X",
+			m_baseAddress,
+			m_baseAddress,
+			m_baseAddress + MaxNodeId,
+			AddressMin,
+			AddressMax
+		);
+		return true;  // see the note on the return value below
+	}
+
+	swapIn();
+
+	if (usesStrobe()) {
+		::pinMode(m_strobePin, OUTPUT);
+		::digitalWrite(m_strobePin, HIGH);
+	}
+
+	// Known state before anything else touches the chain: nothing armed, every node's
+	// CS high. Without this a node left armed by a previous boot would fight the first
+	// sensor we talk to.
+	disarmAll();
+
+	m_presentNodes = 0;
+	uint8_t found = 0;
+	for (uint8_t node = MinNodeId; node <= MaxNodeId; node++) {
+		if (probe(node)) {
+			m_presentNodes |= static_cast<uint16_t>(1u << node);
+			found++;
+		}
+	}
+
+	if (found == 0) {
+		m_Logger.warn(
+			"No ATtiny CS nodes answered on SCL %d / SDA %d (base address 0x%02X). "
+			"Remote SPI sensors will not be detected.",
+			m_sclPin,
+			m_sdaPin,
+			m_baseAddress
+		);
+	} else {
+		m_Logger.info(
+			"Found %d ATtiny CS node(s), CS framing: %s",
+			found,
+			usesStrobe() ? "strobe" : "software (slow, bring-up only)"
+		);
+	}
+
+	// Always true: a chain with no nodes has to surface as "sensor not found" via
+	// isPresent(), not as a failed interface. Returning false here would make the
+	// manager cache a null pointer for the whole bus, which takes down every sensor on
+	// the chain instead of just the missing one.
+	return true;
+}
+
+bool ATTinyCSBus::isNodePresent(uint8_t nodeId) const {
+	if (nodeId < MinNodeId || nodeId > MaxNodeId) {
+		return false;
+	}
+	return (m_presentNodes & static_cast<uint16_t>(1u << nodeId)) != 0;
+}
+
+bool ATTinyCSBus::writeChain(ChainCommand command, uint8_t payload, bool hasPayload) {
+	if (!m_addressValid) {
+		return false;
+	}
+
+	swapIn();
+
+	Wire.beginTransmission(m_baseAddress);
+	Wire.write(static_cast<uint8_t>(command));
+	if (hasPayload) {
+		Wire.write(payload);
+	}
+	return Wire.endTransmission() == 0;
+}
+
+bool ATTinyCSBus::writeNode(uint8_t nodeId, NodeCommand command, uint8_t payload) {
+	if (!m_addressValid) {
+		return false;
+	}
+
+	swapIn();
+
+	Wire.beginTransmission(static_cast<uint8_t>(m_baseAddress + nodeId));
+	Wire.write(static_cast<uint8_t>(command));
+	Wire.write(payload);
+	return Wire.endTransmission() == 0;
+}
+
+bool ATTinyCSBus::select(uint8_t nodeId, uint8_t channel) {
+	const uint8_t target = packTarget(nodeId, channel);
+
+	if (target == m_armedTarget) {
+		return true;
+	}
+
+	if (!writeChain(ChainCommand::Arm, target, true)) {
+		// Drop our cached belief rather than assume the write landed. Re-arming costs
+		// one short write; being wrong costs reading the wrong sensor's registers.
+		m_armedTarget = 0;
+		m_Logger.error("Failed to arm ATtiny CS node %d channel %d", nodeId, channel);
+		return false;
+	}
+
+	m_armedTarget = target;
+	delayMicroseconds(ArmSettleMicros);
+	return true;
+}
+
+void ATTinyCSBus::writeCs(uint8_t nodeId, uint8_t channel, uint8_t level) {
+	if (!select(nodeId, channel)) {
+		// Do not touch the strobe. Some other node may still be armed, and pulsing the
+		// shared strobe would assert its chip select instead of ours.
+		return;
+	}
+
+	if (usesStrobe()) {
+		::digitalWrite(m_strobePin, level);
+		return;
+	}
+
+	if (!writeNode(nodeId, NodeCommand::SetCs, packSetCs(channel, level))) {
+		// A dropped CS write means the next SPI transfer clocks against an unknown chip
+		// select, which produces data that looks plausible and is wrong. Say so, and
+		// force a re-arm so the next attempt re-establishes state from scratch.
+		m_armedTarget = 0;
+		m_Logger.error(
+			"Failed to drive CS on ATtiny CS node %d channel %d",
+			nodeId,
+			channel
+		);
+	}
+}
+
+bool ATTinyCSBus::probe(uint8_t nodeId) {
+	if (!m_addressValid) {
+		return false;
+	}
+
+	swapIn();
+
+	Wire.beginTransmission(static_cast<uint8_t>(m_baseAddress + nodeId));
+	Wire.write(static_cast<uint8_t>(NodeCommand::Identify));
+	if (Wire.endTransmission() != 0) {
+		return false;
+	}
+
+	const uint8_t read = Wire.requestFrom(
+		static_cast<uint8_t>(m_baseAddress + nodeId),
+		IdentityLength
+	);
+	if (read != IdentityLength) {
+		return false;
+	}
+
+	const uint8_t magic = Wire.read();
+	const uint8_t version = Wire.read();
+	const uint8_t reportedId = Wire.read();
+	const uint8_t status = Wire.read();
+
+	if (magic != IdentityMagic) {
+		m_Logger.warn(
+			"Device at 0x%02X is not an ATtiny CS node (magic 0x%02X)",
+			m_baseAddress + nodeId,
+			magic
+		);
+		return false;
+	}
+
+	if (version != ProtocolVersion) {
+		// v1 nodes ignore the channel nibble, so they still work as single-channel
+		// nodes. Worth saying out loud before someone wires a second sensor to one.
+		m_Logger.warn(
+			"ATtiny CS node %d speaks protocol v%d, firmware expects v%d - "
+			"multi-channel "
+			"selection will not work on this node",
+			nodeId,
+			version,
+			ProtocolVersion
+		);
+	}
+
+	if (reportedId != nodeId) {
+		// Almost always a node flashed with the wrong -DNODE_ID. Worth shouting about:
+		// the symptom otherwise is one sensor that mysteriously never appears.
+		m_Logger.error(
+			"ATtiny CS node answering at id %d reports id %d - check which image was "
+			"flashed to which node board",
+			nodeId,
+			reportedId
+		);
+	}
+
+	m_Logger.debug(
+		"ATtiny CS node %d present (status 0x%02X, mode %s)",
+		nodeId,
+		status,
+		(status & StatusStrobeMode) ? "strobe" : "software"
+	);
+	return true;
+}
+
+void ATTinyCSBus::disarmAll() {
+	writeChain(ChainCommand::DisarmAll, 0, false);
+	m_armedTarget = 0;
+
+	if (usesStrobe()) {
+		::digitalWrite(m_strobePin, HIGH);
+	}
+}
+
+std::string ATTinyCSBus::toString() const {
+	using namespace std::string_literals;
+	return "ATTinyCSBus(scl "s + std::to_string(m_sclPin) + ", sda "
+		 + std::to_string(m_sdaPin) + ", base " + std::to_string(m_baseAddress)
+		 + (usesStrobe() ? ", strobe " + std::to_string(m_strobePin) : ", no strobe")
+		 + ")";
+}
+
+bool ATTinyCSPinInterface::init() {
+	// Deliberately not gated on the node answering. A missing node has to look like a
+	// missing sensor further up the stack via isPresent(), otherwise the interface
+	// cache hands back nullptr and SPIImpl has no chip select to report on at all.
+	return true;
+}
+
+bool ATTinyCSPinInterface::isPresent() const {
+	return m_bus != nullptr && m_bus->isNodePresent(m_nodeId);
+}
+
+int ATTinyCSPinInterface::digitalRead() { return m_lastLevel; }
+
+void ATTinyCSPinInterface::pinMode(uint8_t) {
+	// The remote pin is permanently an output; the node owns its direction.
+}
+
+void ATTinyCSPinInterface::digitalWrite(uint8_t val) {
+	m_lastLevel = val;
+	m_bus->writeCs(m_nodeId, m_channel, val);
+}
+
+}  // namespace SlimeVR

@@ -40,6 +40,7 @@
 #include "mpu6050sensor.h"
 #include "mpu9250sensor.h"
 #include "sensor.h"
+#include "sensorinterface/ATTinyCSInterface.h"
 #include "sensorinterface/DirectPinInterface.h"
 #include "sensorinterface/DirectSPIInterface.h"
 #include "sensorinterface/I2CPCAInterface.h"

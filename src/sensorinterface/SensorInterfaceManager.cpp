@@ -46,7 +46,3 @@ bool byteCompare(const T& lhs, const T& rhs) {
 bool operator<(const SPISettings& lhs, const SPISettings& rhs) {
 	return byteCompare(lhs, rhs);
 }
-
-bool operator<(const SPIClass& lhs, const SPIClass& rhs) {
-	return byteCompare(lhs, rhs);
-}

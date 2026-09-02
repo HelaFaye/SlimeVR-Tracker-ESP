@@ -26,6 +26,7 @@
 #include <SPI.h>
 
 #include <cstdint>
+#include <cstring>
 
 #include "../logging/Logger.h"
 #include "DirectSPIInterface.h"
@@ -39,6 +40,15 @@ struct SPIImpl : public RegisterInterface {
 	SPIImpl(DirectSPIInterface* spi, PinInterface* csPin)
 		: m_spi(spi)
 		, m_csPin(csPin) {
+		// Either may be null if its interface failed to initialise. Report it once and
+		// stay inert: every register accessor below is gated on isUsable(), so an
+		// unusable instance is inert rather than a null dereference waiting for a
+		// caller that skips the hasSensorOnBus() check.
+		if (!isUsable()) {
+			m_Logger.error("SPI interface unavailable, sensor will be skipped");
+			return;
+		}
+
 		auto& spiSettings = spi->getSpiSettings();
 		m_Logger.info(
 			"SPI settings: clock: %d, bit order: 0x%02X, data mode: 0x%02X",
@@ -51,6 +61,9 @@ struct SPIImpl : public RegisterInterface {
 	}
 
 	uint8_t readReg(uint8_t regAddr) const override {
+		if (!isUsable()) {
+			return 0;
+		}
 		m_spi->beginTransaction(m_csPin);
 
 		m_spi->transfer(regAddr | ICM_READ_FLAG);
@@ -62,6 +75,9 @@ struct SPIImpl : public RegisterInterface {
 	}
 
 	uint16_t readReg16(uint8_t regAddr) const override {
+		if (!isUsable()) {
+			return 0;
+		}
 		m_spi->beginTransaction(m_csPin);
 
 		m_spi->transfer(regAddr | ICM_READ_FLAG);
@@ -73,6 +89,9 @@ struct SPIImpl : public RegisterInterface {
 	}
 
 	void writeReg(uint8_t regAddr, uint8_t value) const override {
+		if (!isUsable()) {
+			return;
+		}
 		m_spi->beginTransaction(m_csPin);
 
 		m_spi->transfer(regAddr);
@@ -82,6 +101,9 @@ struct SPIImpl : public RegisterInterface {
 	}
 
 	void writeReg16(uint8_t regAddr, uint16_t value) const override {
+		if (!isUsable()) {
+			return;
+		}
 		m_spi->beginTransaction(m_csPin);
 
 		m_spi->transfer(regAddr);
@@ -92,6 +114,12 @@ struct SPIImpl : public RegisterInterface {
 	}
 
 	void readBytes(uint8_t regAddr, uint8_t size, uint8_t* buffer) const override {
+		if (!isUsable()) {
+			// Leaving the caller's buffer untouched would hand it stack garbage that
+			// looks like sensor data.
+			std::memset(buffer, 0, size);
+			return;
+		}
 		m_spi->beginTransaction(m_csPin);
 
 		m_spi->transfer(regAddr | ICM_READ_FLAG);
@@ -103,6 +131,9 @@ struct SPIImpl : public RegisterInterface {
 	}
 
 	void writeBytes(uint8_t regAddr, uint8_t size, uint8_t* buffer) const override {
+		if (!isUsable()) {
+			return;
+		}
 		m_spi->beginTransaction(m_csPin);
 
 		m_spi->transfer(regAddr);
@@ -114,14 +145,39 @@ struct SPIImpl : public RegisterInterface {
 	}
 
 	bool hasSensorOnBus() override {
-		return true;  // TODO
+		if (!isUsable()) {
+			return false;
+		}
+
+		// SPI has no addressing and no ACK, so the bus itself cannot tell us whether a
+		// sensor is out there - that is what the driver's checkPresent() is for.
+		//
+		// Do NOT try to infer presence by reading low registers and looking for a stuck
+		// 0x00/0xFF: on the ICM-45686 registers 0x00-0x0b are accel and gyro data and
+		// WHO_AM_I lives at 0x72, so a healthy sensor that has not been configured yet
+		// reads back all zeros and would be rejected as missing.
+		//
+		// What we can answer is whether the chip select is actually reachable. For a
+		// local pin that is always true; for a remote ATtiny node it is false when the
+		// node never answered, which is the case worth catching early.
+		return m_csPin->isPresent();
 	}
 
 	uint8_t getAddress() const override { return 0; }
 
-	std::string toString() const override { return std::string("SPI"); }
+	std::string toString() const override {
+		// Include the chip select, otherwise every SPI sensor on a multi-drop
+		// bus reports an identical, useless "SPI" in the setup logs.
+		if (m_csPin == nullptr) {
+			return std::string("SPI");
+		}
+		return "SPI(" + m_csPin->toString() + ")";
+	}
 
 private:
+	// True when both the bus and the chip select line came up successfully.
+	bool isUsable() const { return m_spi != nullptr && m_csPin != nullptr; }
+
 	DirectSPIInterface* m_spi;
 	PinInterface* m_csPin;
 	SlimeVR::Logging::Logger m_Logger = SlimeVR::Logging::Logger("SPI");

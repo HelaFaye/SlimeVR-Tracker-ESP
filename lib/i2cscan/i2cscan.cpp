@@ -35,6 +35,13 @@ namespace I2CSCAN {
 		std::array<uint8_t, 20> portArray = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 14, 15, 18, 19, 20, 21, 22, 23};
 		std::array<std::string, 20> portMap = {"0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "14", "15", "18", "19", "20", "21", "22", "23"};
 		std::array<uint8_t, 5> portExclude = {12, 13, 16, 17, LED_PIN};
+#elif defined(ESP32C5)
+		// ESP32-C5 has GPIO0..GPIO28.
+		// Omitted here: 16-22 (SPI0/1 flash+PSRAM), 13-14 (USB-JTAG),
+		// 2/7/25/27/28 (strapping) and 26 (with 27/28 selects boot mode).
+		std::array<uint8_t, 14> portArray = {0, 1, 3, 4, 5, 6, 8, 9, 10, 11, 12, 15, 23, 24};
+		std::array<std::string, 14> portMap = {"0", "1", "3", "4", "5", "6", "8", "9", "10", "11", "12", "15", "23", "24"};
+		std::array<uint8_t, 9> portExclude = {2, 7, 13, 14, 25, 26, 27, 28, LED_PIN};
 #elif defined(ESP32)
 		std::array<uint8_t, 16> portArray = {4, 13, 14, 15, 16, 17, 18, 19, 21, 22, 23, 25, 26, 27, 32, 33};
 		std::array<std::string, 16> portMap = {"4", "13", "14", "15", "16", "17", "18", "19", "21", "22", "23", "25", "26", "27", "32", "33"};
