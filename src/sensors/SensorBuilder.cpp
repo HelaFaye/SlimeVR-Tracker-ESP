@@ -53,13 +53,56 @@ uint8_t SensorBuilder::buildAllSensors() {
 		= [&](uint8_t scl, uint8_t sda, uint8_t addr, uint8_t ch) {
 			  return interfaceManager.pcaWireInterface().get(scl, sda, addr, ch);
 		  };
+	// SPI on explicit pins. Pass DirectSPIInterface::PinDefault (-1) for any signal
+	// that should keep the core's default pin for this SoC.
+	[[maybe_unused]] const auto SPI_BUS = [&](uint32_t clockFreq,
+											  uint8_t bitOrder,
+											  uint8_t dataMode,
+											  int8_t sck,
+											  int8_t miso,
+											  int8_t mosi) {
+		return interfaceManager.directSPIInterface()
+			.get(&SPI, SPISettings(clockFreq, bitOrder, dataMode), sck, miso, mosi);
+	};
+	// Kept at its original arity so existing board descriptors are untouched.
 	[[maybe_unused]] const auto DIRECT_SPI
 		= [&](uint32_t clockFreq, uint8_t bitOrder, uint8_t dataMode) {
-			  return interfaceManager.directSPIInterface().get(
-				  SPI,
-				  SPISettings(clockFreq, bitOrder, dataMode)
+			  return SPI_BUS(
+				  clockFreq,
+				  bitOrder,
+				  dataMode,
+				  DirectSPIInterface::PinDefault,
+				  DirectSPIInterface::PinDefault,
+				  DirectSPIInterface::PinDefault
 			  );
 		  };
+	// Chip select owned by a remote ATtiny node on an RJ45 sensor chain. One node may
+	// own several chip selects, addressed by channel.
+	[[maybe_unused]] const auto ATTINY_CS_ON = [&](uint8_t scl,
+												   uint8_t sda,
+												   uint8_t baseAddr,
+												   int8_t strobe,
+												   uint8_t nodeId,
+												   uint8_t channel) {
+		return interfaceManager.attinyCSPinInterface().get(
+			interfaceManager.attinyCSBus().get(scl, sda, baseAddr, strobe),
+			nodeId,
+			channel
+		);
+	};
+	[[maybe_unused]] const auto ATTINY_CS_CH = [&](uint8_t nodeId, uint8_t channel) {
+		return ATTINY_CS_ON(
+			REMOTE_CS_SCL,
+			REMOTE_CS_SDA,
+			REMOTE_CS_BASE_ADDR,
+			REMOTE_CS_STROBE,
+			nodeId,
+			channel
+		);
+	};
+	[[maybe_unused]] const auto ATTINY_CS = [&](uint8_t nodeId) {
+		return ATTINY_CS_CH(nodeId, SlimeVR::ATTinyCS::DefaultChannel);
+	};
 
 	// Apply descriptor list and expand to entries
 	SENSOR_DESC_LIST

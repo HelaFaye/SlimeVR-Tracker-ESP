@@ -100,6 +100,9 @@ enum class SensorTypeID : uint8_t {
 #define BOARD_SLIMEVR_BUTTERFLY_DEV 25
 #define BOARD_SLIMEVR_BUTTERFLY 26
 #define BOARD_ESP32C6_SUPERMINI 27
+#define BOARD_ESP32C5_DEVKITC1 28
+#define BOARD_ESP32C5_RJ45_HUB 29  // C5 hub driving remote SPI sensors over RJ45
+#define BOARD_SLIMEVR_C5_CHAIN_HUB 30  // C5 hub: local IMU + up to 2 chain extensions
 #define BOARD_DEV_RESERVED 250  // Reserved, should not be used in any release firmware
 
 #define BAT_EXTERNAL 1

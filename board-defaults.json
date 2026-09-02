@@ -624,6 +624,162 @@
 				"needManualReboot": false,
 				"shouldOnlyUseDefaults": false
 			}
+		},
+		"BOARD_ESP32C5_DEVKITC1": {
+			"values": {
+				"SENSORS": [
+					{
+						"protocol": "I2C",
+						"imu": "IMU_ICM45686",
+						"int": "8",
+						"rotation": "DEG_270",
+						"scl": "4",
+						"sda": "5"
+					},
+					{
+						"protocol": "I2C",
+						"imu": "IMU_ICM45686",
+						"int": "9",
+						"rotation": "DEG_270",
+						"scl": "4",
+						"sda": "5"
+					}
+				],
+				"BATTERY": {
+					"type": "BAT_EXTERNAL",
+					"r1": 100,
+					"r2": 220,
+					"shieldR": 180,
+					"pin": "1"
+				},
+				"LED": {
+					"LED_PIN": "LED_BUILTIN",
+					"LED_INVERTED": false
+				}
+			},
+			"flashingRules": {
+				"applicationOffset": 65536,
+				"needBootPress": false,
+				"needManualReboot": false,
+				"shouldOnlyUseDefaults": false
+			}
+		},
+		"BOARD_ESP32C5_RJ45_HUB": {
+			"values": {
+				"SPI": {
+					"sck": "10",
+					"miso": "11",
+					"mosi": "12",
+					"clock": 4000000,
+					"bitOrder": "MSBFIRST",
+					"mode": "SPI_MODE3"
+				},
+				"REMOTE_CS": {
+					"scl": "4",
+					"sda": "5",
+					"strobe": "6",
+					"baseAddress": 48
+				},
+				"SENSORS": [
+					{
+						"protocol": "SPI",
+						"imu": "IMU_ICM45686",
+						"rotation": "DEG_270",
+						"cs": { "type": "attiny", "node": 1 }
+					},
+					{
+						"protocol": "SPI",
+						"imu": "IMU_ICM45686",
+						"rotation": "DEG_270",
+						"cs": { "type": "attiny", "node": 2 }
+					},
+					{
+						"protocol": "SPI",
+						"imu": "IMU_ICM45686",
+						"rotation": "DEG_270",
+						"cs": { "type": "attiny", "node": 3 }
+					},
+					{
+						"protocol": "SPI",
+						"imu": "IMU_ICM45686",
+						"rotation": "DEG_270",
+						"cs": { "type": "attiny", "node": 4 }
+					}
+				],
+				"BATTERY": {
+					"type": "BAT_EXTERNAL",
+					"r1": 100,
+					"r2": 220,
+					"shieldR": 180,
+					"pin": "1"
+				},
+				"LED": {
+					"LED_PIN": "LED_BUILTIN",
+					"LED_INVERTED": false
+				}
+			},
+			"flashingRules": {
+				"applicationOffset": 65536,
+				"needBootPress": false,
+				"needManualReboot": false,
+				"shouldOnlyUseDefaults": false
+			}
+		},
+		"BOARD_SLIMEVR_C5_CHAIN_HUB": {
+			"values": {
+				"SPI": {
+					"sck": "10",
+					"miso": "11",
+					"mosi": "12",
+					"clock": 4000000,
+					"bitOrder": "MSBFIRST",
+					"mode": "SPI_MODE3"
+				},
+				"REMOTE_CS": {
+					"scl": "4",
+					"sda": "5",
+					"strobe": "6",
+					"baseAddress": 48
+				},
+				"SENSORS": [
+					{
+						"protocol": "SPI",
+						"imu": "IMU_ICM45686",
+						"rotation": "DEG_0",
+						"int": "9",
+						"cs": { "type": "direct", "pin": "3" }
+					},
+					{
+						"protocol": "SPI",
+						"imu": "IMU_ICM45686",
+						"rotation": "DEG_0",
+						"cs": { "type": "attiny", "node": 1 }
+					},
+					{
+						"protocol": "SPI",
+						"imu": "IMU_ICM45686",
+						"rotation": "DEG_0",
+						"cs": { "type": "attiny", "node": 2 }
+					}
+				],
+				"BATTERY": {
+					"type": "BAT_EXTERNAL",
+					"r1": 100,
+					"r2": 220,
+					"shieldR": 180,
+					"pin": "1"
+				},
+				"LED": {
+					"LED_PIN": "8",
+					"LED_INVERTED": false
+				}
+			},
+			"flashingRules": {
+				"applicationOffset": 65536,
+				"needBootPress": false,
+				"needManualReboot": false,
+				"shouldOnlyUseDefaults": false
+			}
 		}
 	}
 }

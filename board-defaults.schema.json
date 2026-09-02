@@ -83,9 +83,86 @@
 					"$ref": "#/$defs/IMU_ROTATION",
 					"description": "IMU Rotation"
 				},
-				"cs": { "$ref": "#/$defs/pin", "description": "CS Pin" }
+				"cs": {
+					"description": "Chip select: a host pin, or a remote ATtiny node",
+					"oneOf": [
+						{ "$ref": "#/$defs/pin" },
+						{ "$ref": "#/$defs/DIRECT_CS" },
+						{ "$ref": "#/$defs/ATTINY_CS" }
+					]
+				}
 			},
 			"required": ["protocol", "imu", "cs"]
+		},
+
+		"DIRECT_CS": {
+			"type": "object",
+			"description": "Chip select driven by a pin on the tracker itself",
+			"properties": {
+				"type": { "const": "direct" },
+				"pin": { "$ref": "#/$defs/pin", "description": "CS Pin" }
+			},
+			"required": ["type", "pin"]
+		},
+
+		"ATTINY_CS": {
+			"type": "object",
+			"description": "Chip select driven by an ATtiny node on an RJ45 sensor chain",
+			"properties": {
+				"type": { "const": "attiny" },
+				"node": {
+					"type": "integer",
+					"minimum": 1,
+					"maximum": 15,
+					"description": "Node id, must match the -DNODE_ID the node was flashed with"
+				},
+				"channel": {
+					"type": "integer",
+					"minimum": 0,
+					"maximum": 15,
+					"description": "Which chip select on that node. Defaults to 0"
+				}
+			},
+			"required": ["type", "node"]
+		},
+
+		"SPI_BUS": {
+			"type": "object",
+			"description": "SPI bus settings shared by every SPI sensor on this board",
+			"properties": {
+				"sck": { "$ref": "#/$defs/pin", "description": "SCK Pin" },
+				"miso": { "$ref": "#/$defs/pin", "description": "MISO Pin" },
+				"mosi": { "$ref": "#/$defs/pin", "description": "MOSI Pin" },
+				"clock": {
+					"type": "integer",
+					"description": "Clock in Hz. 24 MHz is a PCB-trace number; over cable start at 4 MHz"
+				},
+				"bitOrder": { "type": "string", "enum": ["MSBFIRST", "LSBFIRST"] },
+				"mode": {
+					"type": "string",
+					"enum": ["SPI_MODE0", "SPI_MODE1", "SPI_MODE2", "SPI_MODE3"]
+				}
+			}
+		},
+
+		"REMOTE_CS": {
+			"type": "object",
+			"description": "ATtiny chip-select node chain (see docs/dev/ATTINY-CS-PROTOCOL.md)",
+			"properties": {
+				"scl": { "$ref": "#/$defs/pin", "description": "Chain I2C SCL Pin" },
+				"sda": { "$ref": "#/$defs/pin", "description": "Chain I2C SDA Pin" },
+				"strobe": {
+					"$ref": "#/$defs/pin",
+					"description": "Shared CS_STROBE Pin. Omit to fall back to slow software CS"
+				},
+				"baseAddress": {
+					"type": "integer",
+					"minimum": 8,
+					"maximum": 112,
+					"description": "Chain address; nodes also answer on baseAddress + nodeId"
+				}
+			},
+			"required": ["scl", "sda"]
 		},
 
 		"IMU": {
@@ -118,7 +195,10 @@
 				"BOARD_WEMOSWROOM02",
 				"BOARD_XIAO_ESP32C3",
 				"BOARD_ESP32S3_SUPERMINI",
-				"BOARD_ESP32C6_SUPERMINI"
+				"BOARD_ESP32C6_SUPERMINI",
+				"BOARD_ESP32C5_DEVKITC1",
+				"BOARD_ESP32C5_RJ45_HUB",
+				"BOARD_SLIMEVR_C5_CHAIN_HUB"
 			],
 			"description": "Board Type"
 		},
@@ -175,9 +255,11 @@
 					"type": "array",
 					"items": { "$ref": "#/$defs/IMU" },
 					"minItems": 1,
-					"maxItems": 2,
-					"description": "Sensors List"
+					"maxItems": 16,
+					"description": "Sensors List. A glove needs 16 (15 finger bones plus the back of the hand); body trackers need far fewer"
 				},
+				"SPI": { "$ref": "#/$defs/SPI_BUS" },
+				"REMOTE_CS": { "$ref": "#/$defs/REMOTE_CS" },
 				"LED": {
 					"type": "object",
 					"description": "Led Settings",
