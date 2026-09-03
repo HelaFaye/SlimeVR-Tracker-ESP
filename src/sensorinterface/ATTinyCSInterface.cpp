@@ -166,6 +166,17 @@ bool ATTinyCSBus::select(uint8_t nodeId, uint8_t channel) {
 }
 
 void ATTinyCSBus::writeCs(uint8_t nodeId, uint8_t channel, uint8_t level) {
+	if (level != LOW && m_armedTarget != packTarget(nodeId, channel)) {
+		// Releasing a chip select we never managed to assert - normally because the arm
+		// write failed. Arming now would spend an I2C write reaching a state we are
+		// immediately leaving, and would arm a node as a side effect of releasing it.
+		// Driving the strobe high is safe regardless of who is armed: high is idle.
+		if (usesStrobe()) {
+			::digitalWrite(m_strobePin, HIGH);
+		}
+		return;
+	}
+
 	if (!select(nodeId, channel)) {
 		// Do not touch the strobe. Some other node may still be armed, and pulsing the
 		// shared strobe would assert its chip select instead of ours.
