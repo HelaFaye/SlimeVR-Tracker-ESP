@@ -4,6 +4,64 @@ Newest first. Each entry says what changed, what was verified, and what is still
 
 ---
 
+## 2026-09-02j — Audit, and the synthetic tracker
+
+Two outstanding items, both done. Findings in `docs/dev/AUDIT.md`; the new harness is
+documented in `sim/README.md`.
+
+### Audit: two real pre-existing bugs
+
+Tools actually run, not a checklist: `-Wall -Wextra -Wshadow -Wnon-virtual-dtor
+-Wold-style-cast -Wconversion` over the real sources via the sim build, ASan + UBSan on
+all 29 scenarios, `cppcheck 2.13`, `ruff`, `jsonschema`, and a cross-check of board ids
+against envs, defaults and the schema enum.
+
+**`byteCompare()` was not a strict weak ordering.** It returned `true` on the first byte
+where the left operand was smaller but *continued* when it was larger, so for `a = {5, 0}`
+and `b = {3, 9}` both `byteCompare(a, b)` and `byteCompare(b, a)` are true. This is the
+`SPISettings` cache key, so it is live on every SPI board including the shipping
+`BOARD_SLIMEVR_V1_2`. A `std::map` on such a comparator has undefined behaviour, and the
+practical symptom is a lookup that should hit missing and constructing a duplicate
+interface that calls `begin()` on a bus already up. DEC-005 deferred this; that was the
+wrong call for a correctness bug in a live cache key, so it is fixed.
+
+**Dereference of an empty optional.** `I2CWireSensorInterface.cpp` had
+`if (activeSCLPin && activeSCLPin)` — SCL twice — guarding a block that dereferences
+`*activeSDAPin`. Found by cppcheck. Pre-existing and upstream; worth reporting there.
+
+Clean otherwise: sanitizers report nothing, cppcheck finds nothing in any of the new
+files, and all four board tables agree exactly with no orphans in either direction.
+
+Deliberately not fixed and recorded with reasons: 33 `-Wnon-virtual-dtor` warnings on the
+interface hierarchy. Checked before dismissing — there is no `delete` through a base
+pointer and no `unique_ptr<PinInterface>` anywhere in the tree, so it is latent rather
+than active, and fixing it touches every interface including upstream ones.
+
+### Synthetic tracker
+
+`sim/synthetic_tracker.py` stands up all five hubs and fifteen sensors against a real
+server over UDP. Wire format taken from `packets.h` and `connection.cpp`, then checked
+against `UDPPacket.kt`, which is what actually parses it.
+
+Verified by capturing its own traffic on a loopback port and decoding it back: 5
+handshakes, 15 sensor-info packets, 1125 rotation packets in 1.5 s at 50 Hz, handshake and
+sensor-info fields decoding to the expected values, and quaternions unit-length to 1e-6.
+
+Six poses. `palm-twist` is the one worth running: only the palms rotate, so if the
+forearms swing with them the arm chain is mis-parented. That is precisely the confusion
+that produced a wrong answer in these notes a few entries ago, and it is now a thing that
+can be checked in ten seconds instead of reasoned about.
+
+### The two harnesses together
+
+`run.sh` runs the real bus sources against a modelled chain — everything below the
+network. `synthetic_tracker.py` runs a fabricated body against the real server —
+everything above it. Neither runs firmware on silicon, and nothing here reduces the
+bring-up sequence in `HARDWARE-RJ45-SPI-BUS.md`. What they do is clear out the class of
+bug that would otherwise be mistaken for a hardware fault during that bring-up.
+
+---
+
 ## 2026-09-02i — Scope settled: palm only, no fingers
 
 Requirement is palm rotation and position. That is Reading A from `GLOVE-OVER-I2SPI.md`:

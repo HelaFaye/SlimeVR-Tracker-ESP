@@ -222,10 +222,12 @@ bool ATTinyCSBus::probe(uint8_t nodeId) {
 		return false;
 	}
 
-	const uint8_t magic = Wire.read();
-	const uint8_t version = Wire.read();
-	const uint8_t reportedId = Wire.read();
-	const uint8_t status = Wire.read();
+	// Wire.read() returns int and can signal underflow with -1, but requestFrom()
+	// already confirmed IdentityLength bytes are buffered.
+	const auto magic = static_cast<uint8_t>(Wire.read());
+	const auto version = static_cast<uint8_t>(Wire.read());
+	const auto reportedId = static_cast<uint8_t>(Wire.read());
+	const auto status = static_cast<uint8_t>(Wire.read());
 
 	if (magic != IdentityMagic) {
 		m_Logger.warn(

@@ -60,3 +60,56 @@ previously armed node stays *armed*, because the chain never saw the write. That
 harmless — assertion is the arm latch AND the strobe, and the strobe is idle high — but it
 means "armed" and "asserted" are not the same thing, and code that conflates them will be
 wrong in exactly this case.
+
+---
+
+# Synthetic tracker (`synthetic_tracker.py`)
+
+The other half. `run.sh` covers everything below the network; this covers everything
+above it — discovery, handshake, sensor enumeration, tracker assignment, the skeleton
+solve, palm forward kinematics — with no firmware, no hardware and no emulator.
+
+```sh
+python3 sim/synthetic_tracker.py --list-poses
+python3 sim/synthetic_tracker.py --pose walk --rate 100
+python3 sim/synthetic_tracker.py --host 192.168.1.20 --pose palm-twist
+```
+
+It stands up the **whole 18-point build**: five hub devices, each with its own UDP socket,
+MAC and packet counter, carrying three sensors — hub IMU as sensor 0, I2SPI nodes 1 and 2
+as sensors 1 and 2. Fifteen sensors, the same topology as
+`docs/dev/EXAMPLE-18POINT-BUILD.md`.
+
+## Wire format
+
+Taken from `src/network/packets.h` and `connection.cpp` on the sending side, then checked
+against `UDPPacket.kt` on the server side, which is the authoritative consumer. Header is
+4 bytes of big-endian packet type followed by 8 of packet number; `Handshake` (3),
+`SensorInfo` (15), `RotationData` (17) and `HeartBeat` (0) are implemented. Positions come
+from `TrackerPosition.kt` ids.
+
+## Poses
+
+| Pose | What it is for |
+|---|---|
+| `t-pose` | Everything identity. Baseline for assignment |
+| `arms-down` | Neutral standing |
+| `sitting` | Hips and knees flexed. Exercises leg constraints |
+| `walk` | Counter-swinging limbs. Foot and hip solve stability |
+| `wave` | Right arm, palm leading the forearm |
+| `palm-twist` | **The one worth running.** Only the palms rotate |
+
+`palm-twist` is the diagnostic. If the palms turn and nothing else moves, the arm chain is
+parented correctly and `forceArmsFromHMD` is doing what we think it is. If the forearms
+swing with them, it isn't — which is the exact confusion that produced a wrong answer in
+this project's own notes before it was caught.
+
+## What it proves and what it doesn't
+
+Proves: the server accepts the topology, fifteen sensors across five devices enumerate,
+assignment works, the skeleton solves, and palm position is produced by FK from measured
+arm segments.
+
+Doesn't: any firmware behaviour whatsoever. It fabricates rotations; it does not run a
+line of tracker code. Pair it with `run.sh`, which runs the real bus sources but no
+network.

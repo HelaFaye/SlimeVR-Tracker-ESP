@@ -3,7 +3,7 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 SRC=../src
-g++ -std=gnu++2a -O1 -Wall -g \
+g++ -std=gnu++2a -O1 -Wall -Wextra -Wshadow -Wnon-virtual-dtor -Wold-style-cast -Wconversion -g \
   -I stubs -I stubs/logging -I "$SRC" -I "$SRC/sensorinterface" -I ../lib/bno080 \
   main.cpp chain_model.cpp logstub.cpp \
   "$SRC/sensorinterface/ATTinyCSInterface.cpp" \
