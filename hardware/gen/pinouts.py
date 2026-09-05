@@ -30,6 +30,10 @@ class Pinout:
     checked_against: str = ""
 
 
+# ESP32-C5-WROOM-1 and QMC6309 now come from the vendored libraries in
+# hardware/lib/vendor rather than from these tables - see PROVENANCE.md there. The
+# entries below are kept only for the parts still needing a locally generated symbol.
+
 ICM45686 = Pinout(
     name="ICM-45686",
     description="6-axis IMU, SPI host interface + AUX1 I2C master",
@@ -51,6 +55,9 @@ ICM45686 = Pinout(
         ("14", "GND", "power_in"),
     ],
     verified=False,
+    checked_against="NOT CHECKED. Mumo's IMU.kicad_mod is an LGA-14 land pattern but "
+    "its description cites the BMI160 datasheet - same package, different part. Pin "
+    "functions are certainly not the same.",
 )
 
 QMC6309 = Pinout(
@@ -84,7 +91,14 @@ ESP32_C5_WROOM = Pinout(
     verified=False,
 )
 
-ALL = {"ICM45686": ICM45686, "QMC6309": QMC6309, "ESP32_C5_WROOM": ESP32_C5_WROOM}
+# Only parts we still have to generate a symbol for. QMC6309 and ESP32-C5-WROOM-1 are
+# sourced from vendored libraries instead.
+ALL = {"ICM45686": ICM45686}
+
+SOURCED = {
+    "ESP32-C5-WROOM-1": "vendor/Espressif.kicad_sym (Espressif official)",
+    "QMC6309": "vendor/Mumo.kicad_sym (4-pad WLCSP: A1/A2/B1/B2)",
+}
 
 
 def unverified():

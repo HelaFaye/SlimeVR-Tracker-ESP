@@ -5,7 +5,7 @@ RJ45,"hub:J1,node:J1,node:J2",Connector_RJ:RJ45_Amphenol_54602-x08_Horizontal,C8
 100k,"hub:R12,hub:R9,node:R1",Resistor_SMD:R_0402_1005Metric,,18
 33,"hub:R1,hub:R2,hub:R3",Resistor_SMD:R_0402_1005Metric,,15
 ICM-45686,"hub:U2,node:U2",slimevr-i2spi:LGA-14_2.5x3mm_P0.5mm,C5457057,13
-QMC6309,"hub:U3,node:U3",slimevr-i2spi:DFN-6_1.6x1.6mm_P0.5mm,C5325803,13
+QMC6309,"hub:U3,node:U3",Mumo:QMC6309,C5325803,13
 10u,"hub:C3,node:C4",Capacitor_SMD:C_0402_1005Metric,,13
 2k2,"hub:R4,hub:R5",Resistor_SMD:R_0402_1005Metric,,10
 LED,"hub:D1,hub:D2",LED_SMD:LED_0603_1608Metric,C2286,10
@@ -16,7 +16,7 @@ ATtiny412,node:U1,Package_SO:SOIC-8_3.9x4.9mm_P1.27mm,C79945,8
 DMG2305UX,node:Q1,Package_TO_SOT_SMD:SOT-23,C111885,8
 1u,node:C5,Capacitor_SMD:C_0402_1005Metric,,8
 UPDI,node:TP1,TestPoint:TestPoint_Pad_D1.0mm,,8
-ESP32-C5-WROOM-1,hub:U1,slimevr-i2spi:ESP32-C5-WROOM-1,C5736265,5
+ESP32-C5-WROOM-1,hub:U1,Espressif:ESP32-C5-WROOM-1,C5736265,5
 AP2112K-3.3,hub:U4,Package_TO_SOT_SMD:SOT-23-5,C51118,5
 MCP73831,hub:U5,Package_TO_SOT_SMD:SOT-23-5,C424093,5
 2k,hub:R8,Resistor_SMD:R_0402_1005Metric,,5
