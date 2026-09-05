@@ -9,9 +9,10 @@ from pathlib import Path
 import parts
 
 PROJECT_LIB = Path(__file__).resolve().parents[1] / "lib"
-SYM_DIRS = [PROJECT_LIB, Path("/usr/share/kicad/symbols"),
+VENDOR_LIB = PROJECT_LIB / "vendor"
+SYM_DIRS = [PROJECT_LIB, VENDOR_LIB, Path("/usr/share/kicad/symbols"),
             Path.home() / ".local/share/kicad/symbols"]
-FP_DIRS = [PROJECT_LIB, Path("/usr/share/kicad/footprints"),
+FP_DIRS = [PROJECT_LIB, VENDOR_LIB, Path("/usr/share/kicad/footprints"),
            Path.home() / ".local/share/kicad/footprints"]
 
 

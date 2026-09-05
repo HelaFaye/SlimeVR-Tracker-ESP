@@ -32,8 +32,8 @@ ESP32_C5 = Part(
     # KiCad 7 ships no C5, ICM-45686 or QMC6309 symbol - all three are too new. They
     # come from the project library that mklib.py generates. See pinouts.py for the
     # verification status of each.
-    symbol="slimevr-i2spi:ESP32-C5-WROOM-1",
-    footprint="slimevr-i2spi:ESP32-C5-WROOM-1",
+    symbol="Espressif:ESP32-C5-WROOM-1",
+    footprint="Espressif:ESP32-C5-WROOM-1",
     value="ESP32-C5-WROOM-1",
     lcsc="C5736265",
     description="Dual-band Wi-Fi 6 RISC-V module",
@@ -50,8 +50,8 @@ ICM45686 = Part(
 
 QMC6309 = Part(
     ref_prefix="U",
-    symbol="slimevr-i2spi:QMC6309",
-    footprint="slimevr-i2spi:DFN-6_1.6x1.6mm_P0.5mm",
+    symbol="Mumo:QMC6309",
+    footprint="Mumo:QMC6309",
     value="QMC6309",
     lcsc="C5325803",
     description="3-axis magnetometer, on the IMU AUX1 bus",

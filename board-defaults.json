@@ -729,8 +729,8 @@
 			"values": {
 				"SPI": {
 					"sck": "10",
-					"miso": "11",
-					"mosi": "12",
+					"miso": "9",
+					"mosi": "8",
 					"clock": 4000000,
 					"bitOrder": "MSBFIRST",
 					"mode": "SPI_MODE3"
@@ -746,7 +746,7 @@
 						"protocol": "SPI",
 						"imu": "IMU_ICM45686",
 						"rotation": "DEG_0",
-						"int": "9",
+						"int": "15",
 						"cs": { "type": "direct", "pin": "3" }
 					},
 					{
@@ -770,7 +770,7 @@
 					"pin": "1"
 				},
 				"LED": {
-					"LED_PIN": "8",
+					"LED_PIN": "23",
 					"LED_INVERTED": false
 				}
 			},

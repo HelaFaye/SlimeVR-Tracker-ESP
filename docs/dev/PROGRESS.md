@@ -4,6 +4,49 @@ Newest first. Each entry says what changed, what was verified, and what is still
 
 ---
 
+## 2026-09-02k — Vendored libraries; one of them found a live bug
+
+`docs/I2SPI.md` written: consolidated pinout and protocol specification.
+
+### The ESP32-C5 pinout corrected a real firmware bug
+
+Espressif's own `kicad-libraries` has an `ESP32-C5-WROOM-1` symbol, which is as
+authoritative as a datasheet. Module pins 24 and 25 are `U0RXD/GPIO12` and
+`U0TXD/GPIO11` — and `BOARD_SLIMEVR_C5_CHAIN_HUB` had SPI MISO on GPIO11 and MOSI on
+GPIO12. That would have fought the console UART on every boot, with a symptom
+(corrupted serial, unreliable SPI) that looks nothing like its cause.
+
+Moved to GPIO9/GPIO8, INT to GPIO15, LED to GPIO23. All still inside the free set the
+`i2cscan` work established: 0,1,3,4,5,6,8,9,10,15,23,24 after excluding flash, USB-JTAG,
+strapping and now UART.
+
+This is the second time an unverified assumption in this project turned out wrong, and the
+second time the flag saved it. Worth keeping the habit.
+
+### QMC6309 was not the package I guessed
+
+The Mumo library has a real `QMC6309`: a **4-pad WLCSP** with pads `A1`, `A2`, `B1`, `B2`.
+The generated placeholder assumed a DFN-6 with numeric pins — not a variation, a different
+package with a different pad count. Now sourced rather than generated.
+
+### Still unverified: ICM-45686
+
+Neither upload has it. `Mumo.pretty/IMU.kicad_mod` is an LGA-14 land pattern, but its own
+description cites the **BMI160** datasheet — a different part sharing the LGA-14
+2.5 x 3.0 mm package. The land patterns may be interchangeable; "may be" is not
+verification, and the pin functions certainly are not the same. It stays flagged, and it
+is now the only part that is.
+
+### Changed
+
+- `hardware/lib/vendor/` with `PROVENANCE.md` recording what each library settled and what
+  it did not.
+- `parts.py` points at `Espressif:` and `Mumo:` for those two parts; `verify.py` searches
+  the vendored directory. 15 parts, 0 problems.
+- `board-defaults.json` GPIO reassignment as above. All 19 boards still generate.
+
+---
+
 ## 2026-09-02j — Audit, and the synthetic tracker
 
 Two outstanding items, both done. Findings in `docs/dev/AUDIT.md`; the new harness is
