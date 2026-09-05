@@ -75,6 +75,16 @@ void Node::onWrite(const std::vector<uint8_t>& bytes, bool toChainAddress) {
 		return;
 	}
 
+	if (opcode == static_cast<uint8_t>(ChainCommand::PowerAll)) {
+		setSensorPower(payload != 0);
+		return;
+	}
+
+	if (opcode == static_cast<uint8_t>(NodeCommand::SetSensorPower)) {
+		setSensorPower(payload != 0);
+		return;
+	}
+
 	if (opcode == static_cast<uint8_t>(ChainCommand::DisarmAll)
 		|| opcode == static_cast<uint8_t>(ChainCommand::ResetAll)) {
 		armed = false;
@@ -100,6 +110,28 @@ void Node::onWrite(const std::vector<uint8_t>& bytes, bool toChainAddress) {
 	}
 }
 
+void Node::setSensorPower(bool on) {
+	if (on && !sensorPowered) {
+		g_chain.stats.powerOnEvents++;
+	}
+	sensorPowered = on;
+	for (auto& sensor : sensors) {
+		sensor.powered = on;
+	}
+
+	// How many sensors were mid-ramp at once? Staged bring-up should never exceed one.
+	int ramping = 0;
+	for (const auto& node : g_chain.nodes) {
+		if (node.present && node.sensorPowered && !node.settled) {
+			ramping++;
+		}
+	}
+	if (ramping > g_chain.stats.maxSimultaneousPowerUps) {
+		g_chain.stats.maxSimultaneousPowerUps = ramping;
+	}
+	settled = false;
+}
+
 std::vector<uint8_t> Node::identity() const {
 	uint8_t status = 0;
 	if (armed) {
@@ -107,6 +139,9 @@ std::vector<uint8_t> Node::identity() const {
 	}
 	if (mode == CsMode::Strobe) {
 		status |= StatusStrobeMode;
+	}
+	if (sensorPowered) {
+		status |= StatusSensorPowered;
 	}
 	return {IdentityMagic, ProtocolVersion, reportedId, status};
 }
@@ -225,6 +260,11 @@ void Chain::fail(const char* message) {
 // ---------------------------------------------------------------- ICM-45686 model
 
 uint8_t Sensor::transfer(uint8_t out) {
+	if (!powered) {
+		// No supply: the sensor cannot drive MISO, so the host sees the idle bus.
+		return 0xFF;
+	}
+
 	if (expectRegister) {
 		expectRegister = false;
 		// Bit 7 set means read on this part.
@@ -279,6 +319,15 @@ int TwoWire::read() {
 }
 
 void delayMicroseconds(unsigned us) { sim::g_chain.stats.delayMicros += us; }
+
+void delay(unsigned ms) {
+	sim::g_chain.stats.delayMillis += ms;
+	// A settle delay means whatever was ramping has now finished, so the next power-on
+	// is not simultaneous with it.
+	for (auto& node : sim::g_chain.nodes) {
+		node.settled = true;
+	}
+}
 
 namespace SlimeVR {
 void swapI2C(uint8_t, uint8_t) {}

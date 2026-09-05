@@ -73,6 +73,16 @@ public:
 	/// Read a node's identity block. Used at startup to catch mis-flashed ids.
 	bool probe(uint8_t nodeId);
 
+	/// Switch one node's sensor VCC pass MOSFET.
+	bool setSensorPower(uint8_t nodeId, bool on);
+
+	/// Broadcast: every node gates its sensor at once.
+	bool setAllSensorPower(bool on);
+
+	/// Bring sensors online one at a time, in node order, settling between each.
+	/// Called by init(); exposed so a fault can be re-run without a reboot.
+	void stageSensorPowerUp();
+
 	void disarmAll();
 
 	[[nodiscard]] std::string toString() const;

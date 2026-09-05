@@ -1,0 +1,3 @@
+(sym_lib_table
+  (lib (name "slimevr-i2spi")(type "KiCad")(uri "${KIPRJMOD}/../../lib/slimevr-i2spi.kicad_sym")(options "")(descr ""))
+)
