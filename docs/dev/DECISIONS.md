@@ -394,3 +394,45 @@ data flows over the I2C pair, this name is why.
 
 **Mitigation.** Docs say "I2SPI (SPI data, I2C selection)" on first use in each document,
 which costs four words and removes the ambiguity where it matters.
+
+---
+
+## DEC-014 — Sensor VCC is gated, and sensors come up one at a time
+
+**Decision.** Each node switches its sensor's 3V3 through a P-channel pass MOSFET driven
+by the ATtiny. Sensors power up **off**; `ATTinyCSBus::init()` enumerates the chain with
+only the ATtinys drawing current, then brings sensors online one at a time with a settle
+delay between each.
+
+**Why gate at all.** Three things, in order of how much they matter:
+
+1. **Attribution.** A sensor that is shorted, mis-soldered or drawing wrongly takes the
+   rail down. If everything comes up at once, all you know is that the chain browned out.
+   Bringing them up one at a time makes the failure attributable to a node id, which on a
+   suit with sensors sewn into it is the difference between a five-minute fix and an
+   afternoon.
+2. **Inrush.** Every sensor has bulk capacitance, and the node at the far end of the chain
+   is behind a metre of thin cable with real series resistance. Summed inrush is a
+   brownout; staged inrush is a droop.
+3. **Recovery.** A hung sensor can be power-cycled without rebooting the tracker, which is
+   why `SetSensorReset` now cuts the rail rather than driving a separate reset pin — a
+   power cycle is a stronger reset than the sensor's own, and it costs no extra pin.
+
+**Why P-channel high-side with a gate pull-up.** The polarity is chosen so that the
+failure mode is de-energised. Gate high turns the FET off, and a 100k pull-up holds the
+gate high whenever the ATtiny is not actively driving it — unprogrammed, held in reset, or
+simply not yet at `setup()`. An unpowered IMU cannot drive MISO and cannot fight the bus,
+so a node that fails to boot degrades to "sensor absent" rather than to a bus conflict
+that takes down its neighbours.
+
+Low-side switching would have been one cheaper part, and is wrong here: it leaves the
+sensor's ground floating while its I/O pins are still tied to a live bus, which
+back-powers the part through its ESD diodes.
+
+**Cost.** One FET and one resistor per node, and a 10 ms settle per sensor at boot — 80 ms
+for the eight-extension build, once, at startup.
+
+**Verified in simulation**, not on hardware: `sim/` checks that nothing is powered before
+`init()`, that all present nodes come up, that never more than one is ramping at a time,
+that an absent node costs no settle delay, and that an unpowered sensor floats MISO rather
+than returning plausible data.

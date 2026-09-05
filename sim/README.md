@@ -113,3 +113,22 @@ arm segments.
 Doesn't: any firmware behaviour whatsoever. It fabricates rotations; it does not run a
 line of tracker code. Pair it with `run.sh`, which runs the real bus sources but no
 network.
+
+---
+
+# Sensor power staging
+
+`scenarioStagedPowerUp` and `scenarioNodeRefusesPower` cover the gated VCC rail. Sensors
+come up with their pass MOSFET **off** (`SensorPowerDefaultOn = false`) and
+`ATTinyCSBus::init()` brings them online one at a time, settling between each.
+
+The simulation checks the property that matters: never more than one sensor ramping
+simultaneously. Staging isn't cosmetic — a shorted sensor becomes attributable to a node
+instead of taking the rail down anonymously, and inrush is spread over milliseconds
+instead of summed, which at the far end of a metre of thin cable is the difference between
+a droop and a brownout.
+
+The gate polarity is also modelled: the P-channel FET is off when its gate is high, and
+the gate has a pull-up, so an unprogrammed or held-in-reset ATtiny leaves its sensor
+**unpowered**. That is the safe direction — an unpowered IMU cannot drive MISO and cannot
+fight the bus.

@@ -85,7 +85,7 @@ using namespace SlimeVR::ATTinyCS;
 #ifndef EXTERNAL_CS_GATE
 constexpr uint8_t PinStrobe = PIN_PA6;
 constexpr uint8_t PinChipSelect = PIN_PA7;
-constexpr uint8_t PinSensorAux = PIN_PA3;  // optional reset or power gate
+constexpr uint8_t PinSensorPower = PIN_PA3;  // gate of the VCC pass MOSFET
 #endif
 
 #ifdef EXTERNAL_CS_GATE
@@ -95,11 +95,11 @@ constexpr uint8_t PinSensorAux = PIN_PA3;  // optional reset or power gate
 #ifndef PIN_ARMED_N
 #define PIN_ARMED_N 1
 #endif
-#ifndef PIN_SENSOR_AUX
-#define PIN_SENSOR_AUX 3
+#ifndef PIN_SENSOR_POWER
+#define PIN_SENSOR_POWER 3
 #endif
 constexpr uint8_t PinChipSelect = PIN_ARMED_N;  // named for the shared code paths
-constexpr uint8_t PinSensorAux = PIN_SENSOR_AUX;
+constexpr uint8_t PinSensorPower = PIN_SENSOR_POWER;
 /*
  * Build variant for parts without CCL (ATtiny85 and friends).
  *
@@ -125,10 +125,21 @@ namespace {
 bool armed = false;
 uint8_t armedChannel = 0;
 CsMode csMode = CsMode::Strobe;
-bool sensorPowered = true;
+bool sensorPowered = SensorPowerDefaultOn;
 bool sensorHeldInReset = false;
 
 uint8_t identity[IdentityLength];
+
+/// Drives the P-channel pass MOSFET gating the sensor's 3V3.
+///
+/// P-channel high-side: gate LOW turns the FET ON. Inverted deliberately - if the
+/// ATtiny is unprogrammed, held in reset, or has not reached setup() yet, its pins are
+/// inputs and the pull-up on the gate holds the sensor OFF. Failing to a de-energised
+/// sensor is the safe direction: an unpowered IMU cannot drive MISO and cannot fight
+/// the bus.
+void applySensorPower() {
+	digitalWriteFast(PinSensorPower, sensorPowered ? LOW : HIGH);
+}
 
 void updateIdentity() {
 	uint8_t status = 0;
@@ -244,6 +255,14 @@ void handleChainCommand(uint8_t opcode, uint8_t payload, bool hasPayload) {
 			applyArmedState();
 			break;
 
+		case ChainCommand::PowerAll:
+			if (!hasPayload) {
+				return;
+			}
+			sensorPowered = payload != 0;
+			applySensorPower();
+			break;
+
 		case ChainCommand::DisarmAll:
 			armed = false;
 			armedChannel = 0;
@@ -254,9 +273,9 @@ void handleChainCommand(uint8_t opcode, uint8_t payload, bool hasPayload) {
 			armed = false;
 			armedChannel = 0;
 			csMode = CsMode::Strobe;
-			sensorPowered = true;
+			sensorPowered = SensorPowerDefaultOn;
 			sensorHeldInReset = false;
-			digitalWriteFast(PinSensorAux, LOW);
+			applySensorPower();
 			applyArmedState();
 			break;
 
@@ -297,15 +316,18 @@ void handleNodeCommand(uint8_t opcode, uint8_t payload, bool hasPayload) {
 				return;
 			}
 			sensorPowered = payload != 0;
-			digitalWriteFast(PinSensorAux, sensorPowered ? HIGH : LOW);
+			applySensorPower();
 			break;
 
 		case NodeCommand::SetSensorReset:
+			// Cutting the rail is this board's reset: there is no separate reset pin,
+			// and a power cycle is a stronger reset than the sensor's own anyway.
 			if (!hasPayload) {
 				return;
 			}
 			sensorHeldInReset = payload != 0;
-			digitalWriteFast(PinSensorAux, sensorHeldInReset ? LOW : HIGH);
+			sensorPowered = !sensorHeldInReset;
+			applySensorPower();
 			break;
 
 		case NodeCommand::Identify:
@@ -367,8 +389,11 @@ void setup() {
 	pinMode(PinStrobe, INPUT);
 #endif
 
-	pinMode(PinSensorAux, OUTPUT);
-	digitalWriteFast(PinSensorAux, HIGH);
+	// Gate high = FET off = sensor unpowered. Set before the pin becomes an output so
+	// there is no glimpse of an enabled rail.
+	digitalWriteFast(PinSensorPower, HIGH);
+	pinMode(PinSensorPower, OUTPUT);
+	applySensorPower();
 
 	setupStrobePassthrough();
 	updateIdentity();

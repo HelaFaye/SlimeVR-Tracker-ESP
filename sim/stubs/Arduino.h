@@ -16,3 +16,4 @@ inline void pinMode(int, int) {}
 inline void digitalWrite(int pin, int level) { sim::gpioWrite(pin, level); }
 inline int digitalRead(int pin) { return sim::gpioRead(pin); }
 void delayMicroseconds(unsigned us);
+void delay(unsigned ms);

@@ -32,6 +32,9 @@ void resetChain(int nodeCount, int channelsPerNode = 1, int localCs = -1) {
 	g_chain.localCsPin = localCs;
 	if (localCs >= 0) {
 		g_chain.gpio[localCs] = HIGH;
+		// The hub's own IMU sits on the board's 3V3, not behind a gated pass MOSFET.
+		// Only remote sensors are staged.
+		g_chain.localSensor.powered = true;
 	}
 	for (int i = 1; i <= nodeCount; i++) {
 		Node n;
@@ -258,6 +261,66 @@ void scenarioFailedArmDoesNotPulseStrobe() {
 	check(g_chain.failures == 0, "one-hot held through failure and recovery");
 }
 
+void scenarioStagedPowerUp() {
+	std::printf("\n== Staged sensor power-up ==\n");
+	resetChain(4);
+
+	// Nothing is powered before the bus comes up.
+	bool anyPowered = false;
+	for (auto& n : g_chain.nodes) {
+		anyPowered = anyPowered || n.sensorPowered;
+	}
+	check(!anyPowered, "sensors are gated off before init()");
+
+	SlimeVR::ATTinyCSBus bus(4, 5, 0x30, 6);
+	bus.init();
+
+	int powered = 0;
+	for (auto& n : g_chain.nodes) {
+		if (n.sensorPowered) {
+			powered++;
+		}
+	}
+	check(powered == 4, "init() brought all four sensors online");
+	check(
+		g_chain.stats.maxSimultaneousPowerUps <= 1,
+		"never more than one sensor ramping at a time (inrush is staged)"
+	);
+	check(
+		g_chain.stats.delayMillis
+			== 4 * SlimeVR::ATTinyCS::SensorPowerOnSettleMillis,
+		"one settle delay per powered sensor"
+	);
+
+	SlimeVR::DirectSPIInterface spi(&SPI, SPISettings(4000000, MSBFIRST, SPI_MODE3), 10, 11, 12);
+	spi.init();
+	SlimeVR::ATTinyCSPinInterface pin(&bus, 1, 0);
+	SlimeVR::Sensors::SPIImpl imu(&spi, &pin);
+	check(imu.readReg(0x72) == 0xE9, "sensor answers once powered");
+
+	// A sensor that never got power must read as absent rather than as garbage.
+	bus.setSensorPower(1, false);
+	check(imu.readReg(0x72) == 0xFF, "unpowered sensor floats MISO rather than lying");
+	check(g_chain.failures == 0, "no bus fight during staging");
+}
+
+void scenarioNodeRefusesPower() {
+	std::printf("\n== Node refuses sensor power ==\n");
+	resetChain(2);
+	g_chain.nodes[1].present = false;  // node 2 not on the chain at all
+
+	SlimeVR::ATTinyCSBus bus(4, 5, 0x30, 6);
+	bus.init();
+
+	check(g_chain.nodes[0].sensorPowered, "present node powered its sensor");
+	check(
+		g_chain.stats.delayMillis
+			== 1 * SlimeVR::ATTinyCS::SensorPowerOnSettleMillis,
+		"absent node costs no settle delay"
+	);
+	check(g_chain.failures == 0, "no bus fight");
+}
+
 void scenarioMisflashedNode() {
 	std::printf("\n== Node flashed with the wrong id ==\n");
 	resetChain(2);
@@ -281,6 +344,8 @@ int main() {
 	scenarioLocalAndRemoteShareTheBus();
 	scenarioMultiChannel();
 	scenarioFailedArmDoesNotPulseStrobe();
+	scenarioStagedPowerUp();
+	scenarioNodeRefusesPower();
 	scenarioMisflashedNode();
 
 	std::printf("\n%d checks, %d failed\n", checks, failed);

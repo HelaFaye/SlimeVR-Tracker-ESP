@@ -1,0 +1,43 @@
+{
+  "_comment": "kikit panelize --preset :this file. See hardware/README.md.",
+  "layout": {
+    "type": "grid",
+    "rows": 2,
+    "cols": 8,
+    "hspace": "0.4mm",
+    "vspace": "0.4mm"
+  },
+  "tabs": {
+    "type": "full"
+  },
+  "cuts": {
+    "type": "vcuts",
+    "clearance": "0.4mm",
+    "layer": "Cmts.User"
+  },
+  "framing": {
+    "type": "railstb",
+    "width": "5.0mm",
+    "space": "0.4mm"
+  },
+  "tooling": {
+    "type": "3hole",
+    "hoffset": "2.5mm",
+    "voffset": "2.5mm",
+    "size": "1.5mm"
+  },
+  "fiducials": {
+    "type": "3fid",
+    "hoffset": "5mm",
+    "voffset": "2.5mm",
+    "coppersize": "1mm",
+    "opening": "2mm"
+  },
+  "post": {
+    "millradius": "1mm"
+  },
+  "_selection": {
+    "hub": 5,
+    "node": 8
+  }
+}

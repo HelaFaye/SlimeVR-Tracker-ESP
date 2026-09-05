@@ -12,6 +12,8 @@ namespace sim {
 struct Sensor {
 	bool present = true;
 	bool configured = false;
+	/// VCC pass MOSFET. Off at power-on, mirroring SensorPowerDefaultOn.
+	bool powered = false;
 
 	uint8_t transfer(uint8_t out);
 
@@ -32,23 +34,30 @@ struct Node {
 
 	bool armed = false;
 	uint8_t armedChannel = 0;
+	bool sensorPowered = false;
 	bool softwareCsLow = false;
 	SlimeVR::ATTinyCS::CsMode mode = SlimeVR::ATTinyCS::CsMode::Strobe;
 
 	Sensor sensors[SlimeVR::ATTinyCS::MaxChannels];
 
+	bool settled = true;
+
 	void onWrite(const std::vector<uint8_t>& bytes, bool toChainAddress);
+	void setSensorPower(bool on);
 	[[nodiscard]] bool csAsserted(uint8_t channel) const;
 	[[nodiscard]] std::vector<uint8_t> identity() const;
 };
 
 struct Stats {
 	int i2cWrites = 0;
+	int powerOnEvents = 0;
+	int maxSimultaneousPowerUps = 0;
 	int i2cBytes = 0;
 	int i2cFailures = 0;
 	int spiBytes = 0;
 	int strobeToggles = 0;
 	unsigned delayMicros = 0;
+	unsigned delayMillis = 0;
 
 	void reset() { *this = Stats{}; }
 };

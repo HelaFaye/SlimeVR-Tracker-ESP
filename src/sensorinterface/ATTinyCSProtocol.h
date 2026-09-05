@@ -62,6 +62,7 @@ constexpr uint8_t unpackChannel(uint8_t target) { return target & 0x0F; }
 enum class ChainCommand : uint8_t {
 	Arm = 0x01,  ///< payload: packTarget(nodeId, channel). One-hot; all others disarm.
 	DisarmAll = 0x02,  ///< equivalent to Arm(0)
+	PowerAll = 0x03,  ///< payload: 0 off, 1 on. Every node gates its sensor at once.
 	ResetAll = 0x7F,  ///< back to power-on state
 };
 
@@ -69,7 +70,7 @@ enum class ChainCommand : uint8_t {
 enum class NodeCommand : uint8_t {
 	SetCs = 0x10,  ///< payload: (channel << 4) | level. Software-CS mode only.
 	SetMode = 0x11,  ///< payload: 0 software CS, 1 strobe (CCL or external gate)
-	SetSensorPower = 0x12,  ///< payload: 0 off, 1 on. Optional hardware.
+	SetSensorPower = 0x12,  ///< payload: 0 off, 1 on. Drives the VCC pass MOSFET.
 	SetSensorReset = 0x13,  ///< payload: 0 release, 1 hold. Optional hardware.
 	Identify = 0x20,  ///< no payload; next read returns the identity block
 };
@@ -101,5 +102,15 @@ constexpr uint8_t StatusSensorHeldInReset = 1 << 3;
 
 /// The node needs a moment after Arm to reconfigure its gating before CS is valid.
 constexpr uint16_t ArmSettleMicros = 2;
+
+/// After switching a sensor's VCC on, how long before it will answer. Covers the
+/// MOSFET turn-on, the sensor's supply ramp and its internal boot. The ICM-45686 spec
+/// is 3 ms from power-good; the margin is for the RC of a gated rail at the end of a
+/// metre of cable.
+constexpr uint16_t SensorPowerOnSettleMillis = 10;
+
+/// Sensors power up gated OFF so the host can bring them online one at a time. See
+/// docs/dev/DECISIONS.md DEC-014.
+constexpr bool SensorPowerDefaultOn = false;
 
 }  // namespace SlimeVR::ATTinyCS

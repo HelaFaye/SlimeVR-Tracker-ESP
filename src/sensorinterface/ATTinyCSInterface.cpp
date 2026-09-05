@@ -78,6 +78,11 @@ bool ATTinyCSBus::init() {
 	// sensor we talk to.
 	disarmAll();
 
+	// Sensors come up with their VCC gated off (SensorPowerDefaultOn), so the chain can
+	// be enumerated with nothing but the ATtinys drawing current and nothing driving
+	// MISO. Belt and braces in case a node was left powered by a previous run.
+	setAllSensorPower(false);
+
 	m_presentNodes = 0;
 	uint8_t found = 0;
 	for (uint8_t node = MinNodeId; node <= MaxNodeId; node++) {
@@ -102,6 +107,8 @@ bool ATTinyCSBus::init() {
 			usesStrobe() ? "strobe" : "software (slow, bring-up only)"
 		);
 	}
+
+	stageSensorPowerUp();
 
 	// Always true: a chain with no nodes has to surface as "sensor not found" via
 	// isPresent(), not as a failed interface. Returning false here would make the
@@ -269,6 +276,40 @@ bool ATTinyCSBus::probe(uint8_t nodeId) {
 		(status & StatusStrobeMode) ? "strobe" : "software"
 	);
 	return true;
+}
+
+bool ATTinyCSBus::setSensorPower(uint8_t nodeId, bool on) {
+	return writeNode(nodeId, NodeCommand::SetSensorPower, on ? 1 : 0);
+}
+
+bool ATTinyCSBus::setAllSensorPower(bool on) {
+	return writeChain(ChainCommand::PowerAll, on ? 1 : 0, true);
+}
+
+void ATTinyCSBus::stageSensorPowerUp() {
+	// One at a time rather than a broadcast. Three reasons, in order of how much they
+	// matter: a sensor that is shorted or drawing wrongly is attributable to a node
+	// instead of taking the rail down anonymously; inrush is spread over milliseconds
+	// rather than summed across the chain, which at the far end of a metre of thin
+	// cable is the difference between a droop and a brownout; and each sensor gets a
+	// clean supply ramp with nothing else switching on the same rail.
+	for (uint8_t node = MinNodeId; node <= MaxNodeId; node++) {
+		if (!isNodePresent(node)) {
+			continue;
+		}
+
+		if (!setSensorPower(node, true)) {
+			m_Logger.error(
+				"Node %d did not accept sensor power-on; its sensor will read as "
+				"absent",
+				node
+			);
+			continue;
+		}
+
+		delay(SensorPowerOnSettleMillis);
+		m_Logger.debug("Node %d sensor powered", node);
+	}
 }
 
 void ATTinyCSBus::disarmAll() {
