@@ -87,7 +87,15 @@ MOSFET_P = Part(
     # part-specific symbol are the plausible replacements. Whichever resolves, check the
     # pin order against the DMG2305UX datasheet before laying out - G/S/D ordering is
     # exactly the kind of thing that silently differs.
-    symbol="Device:Q_PMOS_GSD|Device:Q_PMOS_GDS|Device:Q_PMOS_DGS|Device:Q_PMOS_DSG",
+    symbol=(
+        # KiCad 7 shipped four ordered variants in Device; KiCad 10 dropped all of them
+        # and has a single generic Device:Q_PMOS. List every spelling seen in the wild -
+        # a wrong one cannot be selected, because pin_functions below is checked too.
+        "Device:Q_PMOS_GSD|Device:Q_PMOS_GDS|Device:Q_PMOS_DGS|Device:Q_PMOS_DSG"
+        "|Device:Q_PMOS"
+        "|Transistor_FET:Q_PMOS_GSD|Transistor_FET:Q_PMOS_GDS"
+        "|Transistor_FET:Q_PMOS_DGS|Transistor_FET:Q_PMOS_DSG|Transistor_FET:Q_PMOS"
+    ),
     footprint="Package_TO_SOT_SMD:SOT-23",
     value="DMG2305UX",
     lcsc=None,  # TODO look up on jlcpcb.com

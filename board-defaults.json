@@ -746,8 +746,8 @@
 						"protocol": "SPI",
 						"imu": "IMU_ICM45686",
 						"rotation": "DEG_0",
-						"int": "15",
-						"cs": { "type": "direct", "pin": "3" }
+						"int": "24",
+						"cs": { "type": "direct", "pin": "0" }
 					},
 					{
 						"protocol": "SPI",

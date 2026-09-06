@@ -80,8 +80,8 @@ def main():
         print("Refusing to emit: these pinouts have not been checked against a datasheet:")
         for p in bad:
             print(f"  - {p.name} ({p.package})")
-        print("\nCheck them and set verified=True in pinouts.py, or pass")
-        print("--allow-unverified to generate anyway for layout trials.")
+        print("\nCheck them against the datasheet and set verified=True in")
+        print("pinouts.py, or pass --allow-unverified for layout trials.")
         return 1
 
     LIB.parent.mkdir(parents=True, exist_ok=True)

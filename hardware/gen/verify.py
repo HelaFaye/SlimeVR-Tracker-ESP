@@ -39,6 +39,10 @@ SYM_DIRS = _dirs("symbols", "KICAD_SYMBOL_DIR")
 FP_DIRS = _dirs("footprints", "KICAD_FOOTPRINT_DIR")
 
 
+def _pin_sort(num):
+    return (0, int(num)) if num.isdigit() else (1, num)
+
+
 def symbol_pins(lib_id):
     """number -> pin name for one symbol, or None if it isn't installed."""
     lib, name = lib_id.split(":", 1)
@@ -195,7 +199,22 @@ def main():
             needle = stem.split("_")[1] if "_" in stem else stem
             near = _search_all_symbols(needle)
             if near:
-                print(f"           candidates installed here: {', '.join(near)}")
+                print("           installed symbols matching "
+                      f"{needle!r}, with their pin maps:")
+                for cand in near:
+                    pins = symbol_pins(cand)
+                    if pins:
+                        shown = ", ".join(
+                            f"{n}={pins[n]}" for n in sorted(pins, key=_pin_sort)
+                        )
+                        print(f"             {cand}  [{shown}]")
+                    else:
+                        print(f"             {cand}")
+                if part.pin_functions:
+                    want = ", ".join(
+                        f"{n}={f}" for n, f in sorted(part.pin_functions.items())
+                    )
+                    print(f"           this part needs: [{want}]")
             bad += 1
         if not ok_f:
             print(f"           footprint: {msg_f}")
