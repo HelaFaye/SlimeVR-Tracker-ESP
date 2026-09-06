@@ -21,8 +21,12 @@ from typing import Optional
 @dataclass(frozen=True)
 class Part:
     ref_prefix: str
-    symbol: str  # "Library:Symbol"
-    footprint: str  # "Library:Footprint"
+    # "Library:Symbol", or several separated by "|" tried in order. KiCad's stock
+    # libraries reorganise between major versions - a symbol that exists in 7 may have
+    # moved or been renamed by 10 - so parts that are likely to drift list alternatives
+    # rather than pinning one name that will rot.
+    symbol: str
+    footprint: str  # "Library:Footprint", same "|" convention
     value: str
     lcsc: Optional[str] = None
     description: str = ""
@@ -73,7 +77,11 @@ ATTINY412 = Part(
 
 MOSFET_P = Part(
     ref_prefix="Q",
-    symbol="Device:Q_PMOS_GSD",
+    # Q_PMOS_GSD is present in KiCad 7 but absent in 10; the pin-order variants and the
+    # part-specific symbol are the plausible replacements. Whichever resolves, check the
+    # pin order against the DMG2305UX datasheet before laying out - G/S/D ordering is
+    # exactly the kind of thing that silently differs.
+    symbol="Device:Q_PMOS_GSD|Device:Q_PMOS_GDS|Device:Q_PMOS_DGS|Transistor_FET:DMG2305UX",
     footprint="Package_TO_SOT_SMD:SOT-23",
     value="DMG2305UX",
     lcsc=None,  # TODO look up on jlcpcb.com

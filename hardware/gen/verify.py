@@ -3,6 +3,7 @@
 Run this before trusting anything the generator emits. A wrong lib_id produces a
 schematic that opens with broken symbols, which is a slow way to find a typo.
 """
+import re
 import sys
 from pathlib import Path
 
@@ -38,7 +39,35 @@ SYM_DIRS = _dirs("symbols", "KICAD_SYMBOL_DIR")
 FP_DIRS = _dirs("footprints", "KICAD_FOOTPRINT_DIR")
 
 
+def _search_all_symbols(needle):
+    """Names in the installed libraries that look like what was asked for."""
+    hits = []
+    for d in SYM_DIRS:
+        if not d.is_dir():
+            continue
+        for f in sorted(d.glob("*.kicad_sym")):
+            text = f.read_text(encoding="utf-8", errors="replace")
+            for m in re.finditer(r'\(symbol "([^"]+)"', text):
+                n = m.group(1)
+                # Skip KiCad's internal unit sub-symbols (Name_0_1, Name_2_1, ...).
+                if re.search(r'_\d+_\d+$', n):
+                    continue
+                if needle.lower() in n.lower():
+                    hits.append(f"{f.stem}:{n}")
+    return sorted(set(hits))[:8]
+
+
 def symbol_exists(lib_id):
+    """Accepts alternatives separated by '|'; the first that resolves wins."""
+    if "|" in lib_id:
+        tried = []
+        for candidate in lib_id.split("|"):
+            ok, msg = symbol_exists(candidate)
+            if ok:
+                return True, f"resolved to {candidate}"
+            tried.append(candidate)
+        return False, "none of the candidates exist: " + ", ".join(tried)
+
     lib, name = lib_id.split(":", 1)
     for d in SYM_DIRS:
         f = d / f"{lib}.kicad_sym"
@@ -51,6 +80,13 @@ def symbol_exists(lib_id):
 
 
 def footprint_exists(lib_id):
+    if "|" in lib_id:
+        for candidate in lib_id.split("|"):
+            ok, _ = footprint_exists(candidate)
+            if ok:
+                return True, f"resolved to {candidate}"
+        return False, "none of the candidates exist"
+
     lib, name = lib_id.split(":", 1)
     for d in FP_DIRS:
         f = d / f"{lib}.pretty" / f"{name}.kicad_mod"
@@ -68,9 +104,22 @@ def main():
         ok_s, msg_s = symbol_exists(part.symbol)
         ok_f, msg_f = footprint_exists(part.footprint)
         status = "ok  " if (ok_s and ok_f) else "FAIL"
-        print(f"  [{status}] {name:<12} {part.symbol}")
+        shown = part.symbol.split("|")[0]
+        note = ""
+        if ok_s and msg_s.startswith("resolved to"):
+            shown = msg_s.split("resolved to ")[1]
+            if shown != part.symbol.split("|")[0]:
+                note = "  (fallback)"
+        print(f"  [{status}] {name:<12} {shown}{note}")
         if not ok_s:
             print(f"           symbol:    {msg_s}")
+            # A missing symbol is nearly always a rename between KiCad versions, so say
+            # what IS installed rather than leaving the reader to grep for it.
+            stem = part.symbol.split("|")[0].split(":")[1]
+            needle = stem.split("_")[1] if "_" in stem else stem
+            near = _search_all_symbols(needle)
+            if near:
+                print(f"           candidates installed here: {', '.join(near)}")
             bad += 1
         if not ok_f:
             print(f"           footprint: {msg_f}")
