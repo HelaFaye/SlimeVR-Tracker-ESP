@@ -4,6 +4,49 @@ Newest first. Each entry says what changed, what was verified, and what is still
 
 ---
 
+## 2026-09-02n — Portability: KiCad 10 on Arch broke one symbol lookup
+
+Reported from a real Arch run: `VERIFY.sh` failed one check, `Device:Q_PMOS_GSD`. That
+symbol exists in KiCad 7 and not in 10. (The formatting section in that report printed no
+violations — `FAILURES ABOVE` came from the KiCad check alone.)
+
+### Fixed structurally rather than by renaming
+
+Guessing the new name is the exact mistake this project keeps paying for, and it would
+break again at KiCad 11. Instead:
+
+- `parts.py` entries may list alternatives separated by `|`. `verify.py` resolves the
+  first that exists and marks it `(fallback)`.
+- When nothing resolves, it greps every installed library for near-misses and prints them,
+  so the fix is a copy-paste rather than a hunt.
+- Library search covers Arch, Debian and macOS layouts, with `KICAD_SYMBOL_DIR` /
+  `KICAD_FOOTPRINT_DIR` overrides.
+
+Tested by deleting the KiCad 7 name from `parts.py` to simulate KiCad 10: the fallback
+resolves to `Device:Q_PMOS_GDS`, and with every candidate removed the suggestion lists all
+eight installed PMOS symbols.
+
+**Carried caveat:** if the fallback fires, the pin order needs checking against the
+DMG2305UX datasheet. GSD, GDS and DGS all "resolve" and only one is right — verification
+passing is not the same as the schematic being correct here.
+
+### And a bug in the checker itself, again
+
+`_search_all_symbols` used `re` without `verify.py` importing it, so the suggestion path
+raised `NameError` on every invocation. It went unnoticed because my test captured only
+stdout while the traceback went to stderr. Second time in two sessions that a *test* was
+the broken thing; both times the cause was discarding a stream.
+
+### Arch specifics now documented
+
+`docs/dev/SETUP.md` covers the package names (`avr-gcc`, `avr-libc`, `kicad`,
+`kicad-library` — the library is a separate package), the externally-managed-Python
+restriction, clang-format being far newer than the pinned 17, avr-gcc being 16.x versus the
+7.3 developed against, and KiCad 10 silently migrating the KiCad 7 schematic format on
+first open. `kikit` against KiCad 10 remains unverified.
+
+---
+
 ## 2026-09-02m — Debug pass: everything quantifiable now recomputes
 
 Added `VERIFY.sh` (runs everything), `sim/check_numbers.py` (recomputes every documented

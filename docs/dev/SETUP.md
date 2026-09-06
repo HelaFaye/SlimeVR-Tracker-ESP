@@ -35,6 +35,14 @@ expected and harmless — just do not be surprised when the file changes on firs
 `kikit` compatibility with KiCad 10 is **not verified here**; check before relying on the
 panel step.
 
+**Stock symbols move between KiCad versions.** `Device:Q_PMOS_GSD` exists in 7 and not in
+10. Parts likely to drift now list alternatives separated by `|`, and `verify.py` resolves
+the first that exists, marking it `(fallback)`. When nothing resolves it greps the
+installed libraries and prints what *is* there, so the fix is a copy-paste rather than a
+hunt. If it picks a fallback for the P-channel MOSFET, **check the pin order against the
+DMG2305UX datasheet before layout** — GSD versus GDS versus DGS is exactly the kind of
+difference that passes verification and fails on the bench.
+
 If your libraries are somewhere else, override the search:
 
 ```sh
