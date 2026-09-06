@@ -36,12 +36,17 @@ expected and harmless — just do not be surprised when the file changes on firs
 panel step.
 
 **Stock symbols move between KiCad versions.** `Device:Q_PMOS_GSD` exists in 7 and not in
-10. Parts likely to drift now list alternatives separated by `|`, and `verify.py` resolves
-the first that exists, marking it `(fallback)`. When nothing resolves it greps the
-installed libraries and prints what *is* there, so the fix is a copy-paste rather than a
-hunt. If it picks a fallback for the P-channel MOSFET, **check the pin order against the
-DMG2305UX datasheet before layout** — GSD versus GDS versus DGS is exactly the kind of
-difference that passes verification and fails on the bench.
+10. Parts likely to drift list alternatives separated by `|`.
+
+A candidate is only accepted if it **both exists and has the required pin order**. Parts
+declare `pin_functions` (for the MOSFET: pin 1 = G, 2 = S, 3 = D, per the DMG2305UX in
+SOT-23) and `verify.py` reads the actual pin names out of the installed symbol and
+compares. KiCad ships all four orderings — `Q_PMOS_GSD`, `GDS`, `DGS`, `DSG` — so
+resolving on existence alone would happily pick one that drives the wrong pad. Resolving
+on pin function cannot.
+
+This used to be a manual check-the-datasheet caveat. It is now automatic, and
+`test_pin_order.py` proves the guard fires by deliberately breaking it four ways.
 
 If your libraries are somewhere else, override the search:
 
