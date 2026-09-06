@@ -99,10 +99,11 @@ easy to find — but it is the first thing to reach for if part availability bit
 | PA7 | `CS` out (to IMU) — CCL LUT output |
 | PA1 | SDA |
 | PA2 | SCL |
-| PA3 | optional: IMU reset / power gate |
+| PA3 | Gate of the sensor VCC pass MOSFET |
 | PA0 | UPDI |
 
-The CCL LUT is configured as a pass-through of `CS_STROBE` to `CS`. When the node is not
+CCL **LUT1** (not LUT0: PA4/PA5 are absent on an 8-pin package, so `LUT0-OUT` cannot be
+routed out) is configured as a pass-through of `CS_STROBE` to `CS`. When the node is not
 armed, the LUT is disabled and `CS` is driven high by the port. When armed, the LUT is
 enabled and the strobe reaches the IMU with combinational delay only — tens of
 nanoseconds, not the microseconds an interrupt handler would cost.

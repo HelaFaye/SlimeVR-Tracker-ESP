@@ -286,10 +286,12 @@ gating (add CS_STROBE in).
 timing, identical protocol; the host cannot tell them apart (DEC-010). Software-CS mode
 degenerates correctly with the gate fitted: park the strobe low and `CS == ARMED_N`.
 
-**Reference node:** ATtiny412, SOIC-8. Pin map is not a free choice — on an 8-pin tinyAVR
-the only usable CCL output is LUT0's alternate on PA7, and the LUT's direct pin inputs
-(PA0–PA2) are UPDI and TWI, so the strobe reaches the LUT through the event system from
-PA6.
+**Reference node:** ATtiny412, SOIC-8. The pin map is not a free choice. On an 8-pin
+tinyAVR, PA4 and PA5 do not exist, so `LUT0-OUT` (PA4) is unavailable and **PA7 carries
+`LUT1-OUT`** — the firmware therefore uses `Logic1`, not `Logic0`. LUT1's direct pin
+inputs are on PORTC, which an 8-pin package does not have, so the strobe reaches the LUT
+through the event system from PA6. TWI has no alternate pin position on 8-pin parts, so
+SDA/SCL are fixed at PA1/PA2. (ATtiny212/412 datasheet DS40001911B, Table 5-1.)
 
 | ATtiny412 | Signal |
 |---|---|

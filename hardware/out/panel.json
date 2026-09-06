@@ -2,8 +2,8 @@
   "_comment": "kikit panelize --preset :this file. See hardware/README.md.",
   "layout": {
     "type": "grid",
-    "rows": 2,
-    "cols": 8,
+    "rows": 1,
+    "cols": 3,
     "hspace": "0.4mm",
     "vspace": "0.4mm"
   },
@@ -37,7 +37,7 @@
     "millradius": "1mm"
   },
   "_selection": {
-    "hub": 5,
-    "node": 8
+    "hub": 1,
+    "node": 2
   }
 }
