@@ -2,7 +2,9 @@
 # Syntax-check every node firmware build variant with avr-gcc, and confirm the
 # compile-time guards reject invalid configurations.
 #
-# Needs only `apt install gcc-avr avr-libc` - no megaTinyCore, no hardware. The stubs
+# Needs only an AVR compiler - no megaTinyCore, no hardware.
+#   Arch:   sudo pacman -S avr-gcc avr-libc
+#   Debian: sudo apt install gcc-avr avr-libc The stubs
 # stand in for the core's Arduino/Wire/Logic/Event headers, so this checks OUR code, not
 # the core's. A clean run here does not mean it links against megaTinyCore; it means the
 # firmware is free of syntax and type errors in every configuration we ship.
@@ -10,7 +12,8 @@ set -uo pipefail
 cd "$(dirname "$0")"
 SRC=../src/main.cpp
 INC="-I stubs -I ../../../src/sensorinterface"
-CC="avr-gcc -std=gnu++17 -mmcu=attiny412 -Os -Wall -Wextra -fsyntax-only $INC"
+AVR_GCC=${AVR_GCC:-avr-gcc}
+CC="$AVR_GCC -std=gnu++17 -mmcu=attiny412 -Os -Wall -Wextra -fsyntax-only $INC"
 fail=0
 
 VALID=(

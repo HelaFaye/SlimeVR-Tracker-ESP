@@ -8,12 +8,34 @@ from pathlib import Path
 
 import parts
 
+import os
+
 PROJECT_LIB = Path(__file__).resolve().parents[1] / "lib"
 VENDOR_LIB = PROJECT_LIB / "vendor"
-SYM_DIRS = [PROJECT_LIB, VENDOR_LIB, Path("/usr/share/kicad/symbols"),
-            Path.home() / ".local/share/kicad/symbols"]
-FP_DIRS = [PROJECT_LIB, VENDOR_LIB, Path("/usr/share/kicad/footprints"),
-           Path.home() / ".local/share/kicad/footprints"]
+
+# Distributions disagree about where KiCad's libraries live, and the KiCad major version
+# is part of the path on some of them. Search the common locations; override with
+# KICAD_SYMBOL_DIR / KICAD_FOOTPRINT_DIR if yours is somewhere else.
+#   Arch:   /usr/share/kicad/{symbols,footprints}   (package: kicad-library)
+#   Debian: /usr/share/kicad/{symbols,footprints}   (package: kicad-symbols, kicad-footprints)
+#   macOS:  /Applications/KiCad/KiCad.app/Contents/SharedSupport/{symbols,footprints}
+_PREFIXES = [
+    Path("/usr/share/kicad"),
+    Path("/usr/local/share/kicad"),
+    Path.home() / ".local/share/kicad",
+    Path("/Applications/KiCad/KiCad.app/Contents/SharedSupport"),
+]
+
+
+def _dirs(kind, env):
+    override = os.environ.get(env)
+    found = [Path(override)] if override else []
+    found += [p / kind for p in _PREFIXES]
+    return [PROJECT_LIB, VENDOR_LIB] + found
+
+
+SYM_DIRS = _dirs("symbols", "KICAD_SYMBOL_DIR")
+FP_DIRS = _dirs("footprints", "KICAD_FOOTPRINT_DIR")
 
 
 def symbol_exists(lib_id):
@@ -54,6 +76,13 @@ def main():
             print(f"           footprint: {msg_f}")
             bad += 1
     print(f"\n{len(parts.ALL_PARTS)} parts, {bad} problems")
+    if bad and not any(d.exists() for d in SYM_DIRS[2:]):
+        print(
+            "\nNo system KiCad symbol library found. Install one:\n"
+            "  Arch:   sudo pacman -S kicad kicad-library\n"
+            "  Debian: sudo apt install kicad-symbols kicad-footprints\n"
+            "or point KICAD_SYMBOL_DIR / KICAD_FOOTPRINT_DIR at yours."
+        )
     return 1 if bad else 0
 
 
