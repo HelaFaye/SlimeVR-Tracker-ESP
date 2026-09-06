@@ -4,6 +4,48 @@ Newest first. Each entry says what changed, what was verified, and what is still
 
 ---
 
+## 2026-09-02o — The pin-order caveat is now automatic
+
+The last entry left a manual caveat: if the symbol resolver falls back, check the MOSFET
+pin order against the datasheet by hand. That was the one place the portability fix traded
+a loud failure for a quiet one, and quiet failures are what this project keeps getting
+caught by. Removed.
+
+### Resolve on pin function, not on existence
+
+Parts may declare `pin_functions` — for the DMG2305UX in SOT-23, `{1: G, 2: S, 3: D}`.
+`verify.py` now reads the actual pin names out of each candidate symbol and accepts one
+only if it both exists *and* matches. KiCad ships all four orderings (`Q_PMOS_GSD`, `GDS`,
+`DGS`, `DSG`) with identical names and different pin numbers, so resolving on existence
+alone will cheerfully pick one that drives the wrong pad. Resolving on pin function
+cannot.
+
+When nothing matches, the error names each candidate and says exactly which pins are
+wrong: *"Device:Q_PMOS_GDS (pin 2 should be S but is D, pin 3 should be D but is S)"*.
+
+### And a test that the guard actually fires
+
+`test_pin_order.py` breaks the configuration four ways and asserts each is caught: the
+correct config passing, the preferred symbol absent with wrong-order alternatives present
+(the real KiCad 10 case), a single symbol pinned with the wrong order, and the pin map
+itself mis-edited. Added to `VERIFY.sh`.
+
+Given that the last two sessions each found a bug in a *test* rather than in the code, a
+guard without a test for the guard did not seem like enough.
+
+### Two bugs found while building it
+
+- **The status line lied.** A single pinned symbol with a bad pin order printed `[ok  ]`
+  on the headline and the pin-order failure underneath, because status was computed before
+  the pin check ran. Folded in.
+- **`__pycache__` made the test report false passes.** The mutations are the same length
+  and land within the same second, and CPython keys bytecode on mtime plus size — so
+  `verify.py` re-ran against the *previous* variant. The test now clears the cache between
+  cases, with a comment saying why, because the symptom (a test that passes when it should
+  fail) is indistinguishable from the guard working.
+
+---
+
 ## 2026-09-02n — Portability: KiCad 10 on Arch broke one symbol lookup
 
 Reported from a real Arch run: `VERIFY.sh` failed one check, `Device:Q_PMOS_GSD`. That

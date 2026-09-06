@@ -30,6 +30,12 @@ class Part:
     value: str
     lcsc: Optional[str] = None
     description: str = ""
+    # Required pin number -> pin function, as the symbol names it. When a part lists
+    # several candidate symbols, the resolver picks the one whose pins match this map
+    # rather than the first that merely exists - so a library rename cannot silently
+    # substitute a differently-ordered symbol. Declare it for anything where pin order
+    # is not obvious from the schematic.
+    pin_functions: Optional[dict] = None
     # Pin name -> net name, filled in per instance by the board definitions.
     default_nets: dict = field(default_factory=dict)
 
@@ -81,11 +87,16 @@ MOSFET_P = Part(
     # part-specific symbol are the plausible replacements. Whichever resolves, check the
     # pin order against the DMG2305UX datasheet before laying out - G/S/D ordering is
     # exactly the kind of thing that silently differs.
-    symbol="Device:Q_PMOS_GSD|Device:Q_PMOS_GDS|Device:Q_PMOS_DGS|Transistor_FET:DMG2305UX",
+    symbol="Device:Q_PMOS_GSD|Device:Q_PMOS_GDS|Device:Q_PMOS_DGS|Device:Q_PMOS_DSG",
     footprint="Package_TO_SOT_SMD:SOT-23",
     value="DMG2305UX",
     lcsc=None,  # TODO look up on jlcpcb.com
     description="P-channel high-side switch for gated sensor VCC",
+    # DMG2305UX in SOT-23: 1 = gate, 2 = source, 3 = drain. The candidate list above
+    # contains every pin ordering KiCad ships, and only the one matching this map will
+    # be accepted - so whichever KiCad version is installed, the resolved symbol drives
+    # the right pad.
+    pin_functions={"1": "G", "2": "S", "3": "D"},
 )
 
 OR_GATE = Part(

@@ -52,6 +52,7 @@ else
 fi
 
 run "KiCad symbols and footprints" bash -c 'cd hardware/gen && python3 verify.py'
+run "Symbol pin-order guard" python3 hardware/gen/test_pin_order.py
 
 run "Board config generation" python3 -c '
 import json, types
