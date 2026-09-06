@@ -131,10 +131,11 @@ Cable capacitance is the other half of the problem: I2C's 400 pF budget is real,
 cable runs roughly 50–70 pF/m per conductor. Beyond about 2 m total chain length, drop to
 100 kHz I2C or add an active terminator.
 
-**Current budget.** 3V3 down one 26 AWG conductor is roughly 0.14 Ω/m. Six nodes at
-~10 mA each (IMU + ATtiny) is 60 mA, so ~10 mV/m of drop — negligible. It stops being
-negligible if nodes get LEDs or the chain gets long; regulate locally at the node if you
-add anything hungry.
+**Current budget.** 26 AWG is 0.1339 Ω/m, and the current traverses **two** conductors —
+out on VBUS and back on GND — so budget 0.27 Ω/m round trip. Six nodes at ~4 mA each
+(0.42 mA IMU + ~0.5 mA mag + ~3 mA ATtiny) is 24 mA, giving ~6.4 mV/m. Negligible. It stops
+being negligible if nodes get LEDs or the chain gets long; regulate locally at the node if
+you add anything hungry.
 
 **Hot-plug.** Not supported. Powering a node while the bus is live can latch up the IMU
 through its I/O pins. Power the hub down to re-cable.

@@ -234,8 +234,9 @@ Drop the ATtiny clock as far as the TWI slave tolerates — it is the largest si
 a node and it does almost nothing. 5 MHz is a reasonable starting point; at 1 MHz the
 slave may struggle to keep up with 400 kHz I2C.
 
-Voltage drop is a non-issue at these currents: 26 AWG at ~0.14 Ω/m, 12 mA, 0.85 m gives
-about 1.4 mV.
+Voltage drop is a non-issue at these currents: 26 AWG at 0.1339 Ω/m carrying 7.8 mA over
+0.85 m gives **1.8 mV**, counting both conductors — the supply out and the ground return
+each drop the same amount, which the first version of this figure forgot.
 
 ---
 

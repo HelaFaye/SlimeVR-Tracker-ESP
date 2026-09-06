@@ -43,9 +43,13 @@
 #include <Logic.h>
 #endif
 
-#ifndef digitalWriteFast
-// ATTinyCore and megaTinyCore both provide this; plain avr-gcc cores may not.
-#define digitalWriteFast digitalWrite
+// megaTinyCore and ATTinyCore provide digitalWriteFast as a *function*, so an
+// `#ifndef digitalWriteFast` guard cannot detect it - the guard always fires and
+// silently aliases to something that may not exist. Select explicitly instead.
+#ifdef NO_DIGITAL_WRITE_FAST
+#define nodeWrite digitalWrite
+#else
+#define nodeWrite digitalWriteFast
 #endif
 
 #include "ATTinyCSProtocol.h"
@@ -137,9 +141,7 @@ uint8_t identity[IdentityLength];
 /// inputs and the pull-up on the gate holds the sensor OFF. Failing to a de-energised
 /// sensor is the safe direction: an unpowered IMU cannot drive MISO and cannot fight
 /// the bus.
-void applySensorPower() {
-	digitalWriteFast(PinSensorPower, sensorPowered ? LOW : HIGH);
-}
+void applySensorPower() { nodeWrite(PinSensorPower, sensorPowered ? LOW : HIGH); }
 
 void updateIdentity() {
 	uint8_t status = 0;
@@ -173,7 +175,7 @@ constexpr uint8_t ChannelPins[NUM_CHANNELS] = ARMED_N_PINS;
 
 void writeChannel(uint8_t channel, uint8_t level) {
 	if (channel < NUM_CHANNELS) {
-		digitalWriteFast(ChannelPins[channel], level);
+		nodeWrite(ChannelPins[channel], level);
 	}
 }
 
@@ -186,7 +188,7 @@ void applyArmedState() {
 	// Armed pulls ARMED_N low so the gate lets the strobe through; disarmed forces CS
 	// high. In software mode the host parks the strobe low, so this same line is CS.
 	for (uint8_t i = 0; i < NUM_CHANNELS; i++) {
-		digitalWriteFast(ChannelPins[i], (armed && i == armedChannel) ? LOW : HIGH);
+		nodeWrite(ChannelPins[i], (armed && i == armedChannel) ? LOW : HIGH);
 	}
 }
 
@@ -224,14 +226,14 @@ void applyArmedState() {
 	Logic1.init();
 
 	if (!armed) {
-		digitalWriteFast(PinChipSelect, HIGH);
+		nodeWrite(PinChipSelect, HIGH);
 	}
 }
 
 void writeChannel(uint8_t channel, uint8_t level) {
 	// The CCL build is single-channel by construction (see the NUM_CHANNELS guard).
 	if (channel == 0) {
-		digitalWriteFast(PinChipSelect, level);
+		nodeWrite(PinChipSelect, level);
 	}
 }
 
@@ -378,11 +380,11 @@ void setup() {
 #ifdef EXTERNAL_CS_GATE
 	for (uint8_t i = 0; i < NUM_CHANNELS; i++) {
 		pinMode(ChannelPins[i], OUTPUT);
-		digitalWriteFast(ChannelPins[i], HIGH);
+		nodeWrite(ChannelPins[i], HIGH);
 	}
 #else
 	pinMode(PinChipSelect, OUTPUT);
-	digitalWriteFast(PinChipSelect, HIGH);
+	nodeWrite(PinChipSelect, HIGH);
 #endif
 
 #ifndef EXTERNAL_CS_GATE
@@ -391,7 +393,7 @@ void setup() {
 
 	// Gate high = FET off = sensor unpowered. Set before the pin becomes an output so
 	// there is no glimpse of an enabled rail.
-	digitalWriteFast(PinSensorPower, HIGH);
+	nodeWrite(PinSensorPower, HIGH);
 	pinMode(PinSensorPower, OUTPUT);
 	applySensorPower();
 

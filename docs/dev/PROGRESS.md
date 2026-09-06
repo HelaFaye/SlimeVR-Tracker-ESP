@@ -4,6 +4,63 @@ Newest first. Each entry says what changed, what was verified, and what is still
 
 ---
 
+## 2026-09-02m — Debug pass: everything quantifiable now recomputes
+
+Added `VERIFY.sh` (runs everything), `sim/check_numbers.py` (recomputes every documented
+number from source constants) and `extras/attiny-cs-node/test/compile-check.sh` (avr-gcc
+across every build variant). Four bugs found.
+
+### The node firmware had never been compiled. Now it has.
+
+`apt install gcc-avr` was enough — with stub headers standing in for megaTinyCore, avr-gcc
+targets the real ATtiny412. First compile found a genuine bug:
+
+```c
+#ifndef digitalWriteFast
+#define digitalWriteFast digitalWrite   // wrong
+#endif
+```
+
+megaTinyCore provides `digitalWriteFast` as a **function**, not a macro, so `#ifndef`
+cannot see it. The guard always fires and aliases every call to `digitalWrite` — silently
+substituting the slow path on the core it was written for, and expanding to an undeclared
+name on cores that lack it. Replaced with an explicit `NO_DIGITAL_WRITE_FAST` opt-in.
+
+All six valid configurations now compile clean, and all four invalid ones
+(`NODE_ID=0`, `NODE_ID=16`, multi-channel without the gate, no `NODE_ID`) are correctly
+refused by their `#error` guards.
+
+### Two documented numbers were wrong
+
+- **Software-CS cost.** Documented as ~60 µs per operation. A `SetCs` write is three bytes
+  (address, opcode, payload) = 1 + 27 + 1 bits = **72.5 µs** at 400 kHz, so **145 µs** to
+  frame one transaction, not 120. The bring-up mode is ~20% worse than claimed.
+- **Supply drop.** Documented as 1.4 mV. Two errors cancelling badly: it used the old
+  12 mA figure, and it counted only the supply conductor. Current flows out on VBUS and
+  back on GND, so both drop. Correct value is **1.8 mV** — still negligible, but the
+  method was wrong and would not have stayed negligible on a longer chain.
+
+### And one in the test script itself
+
+`compile-check.sh` reported every correctly-refused configuration as accepted. Cause:
+`set -o pipefail` with `compiler | grep -q error` — the pipeline inherits the compiler's
+non-zero exit, so the `if` takes the else branch even though grep matched. Capture first,
+then grep. Worth recording because a test that passes when it should fail is worse than no
+test.
+
+### Verified and unchanged
+
+36 numeric checks now recompute from source: addressing arithmetic (top address `0x3F`
+inside the usable range, `packTarget` fitting a byte, 240 addressable sensors), every
+timing budget, per-node current, cable capacitance against the I2C limit, parallel pull-up
+resistance, settle times, BOM placement count, all four panel dimensions, and the C5 scan
+array against Espressif's reserved-GPIO list.
+
+The scan array check is worth keeping: it recomputes the forbidden set from the datasheet
+facts rather than trusting the array, so if someone adds a pin it fails immediately.
+
+---
+
 ## 2026-09-02l — Verification audit: four claims wrong, two of them live
 
 Full write-up in `docs/dev/VERIFICATION-AUDIT.md`. Roughly thirty load-bearing factual
