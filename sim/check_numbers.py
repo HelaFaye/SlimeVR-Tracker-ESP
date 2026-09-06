@@ -74,7 +74,9 @@ AWG26_OHM_PER_M = 0.1339       # standard wire table, 26 AWG copper at 20 C
 RIBBON_PF_PER_M = 60           # midpoint of the 50-70 pF/m range; MEASURE YOURS
 I2C_BUS_PF_BUDGET = 400        # I2C spec, Fast mode
 IMU_MA = 0.42                  # TDK ICM-45686, 6-axis low-noise mode
-MAG_MA = 0.5                   # QMC6309 continuous - ESTIMATE, not datasheet-checked
+MAG_MA = 2.0                   # QMC6309 datasheet Table 2: ODR=200 Hz, OSR1=8 (high
+                               # power) = 2000 uA. The firmware writes 0x0a=0x21 which
+                               # selects OSR1=8, and 0x0b=0x48 which selects 200 Hz.
 ATTINY_MA = 3.0                # ATtiny412 at 5 MHz / 3.3 V - ESTIMATE
 HUB_MA = 100                   # ESP32-C5 Wi-Fi connected average - ESTIMATE, varies wildly
 
@@ -157,17 +159,17 @@ check("fraction of a 100 Hz cycle at 1 MHz",
 
 print("\nElectrical")
 node_ma = IMU_MA + MAG_MA + ATTINY_MA
-check("per-node current", node_ma, 4, 0.10, " mA")
+check("per-node current", node_ma, 5.4, 0.05, " mA")
 two_node_ma = 2 * node_ma
-check("two-node chain", two_node_ma, 8, 0.10, " mA")
+check("two-node chain", two_node_ma, 10.8, 0.05, " mA")
 check("runtime penalty, two-node chain",
-      two_node_ma / (HUB_MA + IMU_MA + MAG_MA) * 100, 8, 0.15, " %")
+      two_node_ma / (HUB_MA + IMU_MA + MAG_MA) * 100, 10.4, 0.10, " %")
 check("runtime penalty, one-node chain",
-      node_ma / (HUB_MA + IMU_MA + MAG_MA) * 100, 4, 0.15, " %")
+      node_ma / (HUB_MA + IMU_MA + MAG_MA) * 100, 5.2, 0.10, " %")
 
 # Both conductors carry the current: VBUS out and GND back.
 drop_mv = two_node_ma / 1000 * LONGEST_CHAIN_M * AWG26_OHM_PER_M * 2 * 1000
-check("supply drop over the longest chain (both conductors)", drop_mv, 1.8, 0.10, " mV")
+check("supply drop over the longest chain (both conductors)", drop_mv, 2.5, 0.10, " mV")
 
 cable_pf = LONGEST_CHAIN_M * RIBBON_PF_PER_M
 check("I2C cable capacitance, longest chain", cable_pf, 51, 0.10, " pF")
@@ -182,8 +184,8 @@ check("six 4k7 pull-ups in parallel", 4700 / 6, 783, 0.02, " ohm")
 # --------------------------------------------------------------- power staging
 
 print("\nPower staging")
-check("settle time, 8 extensions", 8 * settle_ms, 80, 0, " ms")
-check("settle time, 4-node chain", 4 * settle_ms, 40, 0, " ms")
+check("settle time, 8 extensions", 8 * settle_ms, 120, 0, " ms")
+check("settle time, 4-node chain", 4 * settle_ms, 60, 0, " ms")
 
 # ------------------------------------------------------------- build totals
 
@@ -193,7 +195,7 @@ import boards as B  # noqa: E402
 
 hub_n = len(B.BOARDS["hub"]["comps"])
 node_n = len(B.BOARDS["node"]["comps"])
-check("BOM placements, 5 hubs + 8 nodes", 5 * hub_n + 8 * node_n, 293, 0, "")
+check("BOM placements, 5 hubs + 8 nodes", 5 * hub_n + 8 * node_n, 303, 0, "")
 
 hub_w, hub_h = B.BOARDS["hub"]["size_mm"]
 node_w, node_h = B.BOARDS["node"]["size_mm"]
@@ -224,7 +226,7 @@ m3 = re.search(r"ESP32C5.*?std::array<std::string, (\d+)> portMap", scan, re.S)
 check("C5 portMap size matches portArray", int(m3.group(1)), len(arr), 0, "")
 
 # Espressif: strapping 2,7,25,27,28; flash 16-22; USB-JTAG 13,14; boot mode 26,27,28.
-forbidden = set([2, 7, 25, 27, 28]) | set(range(16, 23)) | {13, 14} | {26}
+forbidden = set([2, 3, 7, 25, 26, 27, 28]) | set(range(16, 23)) | {13, 14}
 checks += 1
 bad = sorted(set(arr) & forbidden)
 if bad:
@@ -237,7 +239,10 @@ else:
 checks += 1
 uart = sorted(set(arr) & {11, 12})
 if uart:
-    print(f"  [--] C5 scan array includes module UART pins {uart} (risk R2, known)")
+    failures.append(f"C5 scan array includes module UART pins {uart}")
+    print(f"  [FAIL] C5 scan array includes module UART pins {uart}")
+else:
+    print("  [ok] C5 scan array avoids the module console UART (GPIO11/12)")
 
 print(f"\n{checks} checks, {len(failures)} failed")
 for f in failures:

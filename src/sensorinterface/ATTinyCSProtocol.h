@@ -103,11 +103,18 @@ constexpr uint8_t StatusSensorHeldInReset = 1 << 3;
 /// The node needs a moment after Arm to reconfigure its gating before CS is valid.
 constexpr uint16_t ArmSettleMicros = 2;
 
-/// After switching a sensor's VCC on, how long before it will answer. Covers the
-/// MOSFET turn-on, the sensor's supply ramp and its internal boot. The ICM-45686 spec
-/// is 3 ms from power-good; the margin is for the RC of a gated rail at the end of a
-/// metre of cable.
-constexpr uint16_t SensorPowerOnSettleMillis = 10;
+/// After switching a sensor's VCC on, how long before the node's sensors will answer.
+///
+/// Set by the QMC6309, not the IMU: its datasheet gives PSUP (supply ramp, 0.2 V to
+/// operating voltage) < 10 ms and PORT (power-on-reset completion) < 3 ms, so 13 ms
+/// before it will accept an I2C command. 15 ms adds margin for the RC of a gated rail
+/// at the end of a metre of cable. An earlier value of 10 ms was too short and would
+/// have produced a magnetometer that intermittently failed to configure.
+constexpr uint16_t SensorPowerOnSettleMillis = 15;
+
+/// The QMC6309 needs its supply below SDV (0.2 V) for at least PINT before it will
+/// power-on-reset again. Enforced when power-cycling a node's sensors.
+constexpr uint16_t SensorPowerOffHoldMicros = 100;
 
 /// Sensors power up gated OFF so the host can bring them online one at a time. See
 /// docs/dev/DECISIONS.md DEC-014.

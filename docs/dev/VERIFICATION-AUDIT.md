@@ -118,7 +118,7 @@ mapping. The board config is fixed; the scan table is not.)*
 | Flat ribbon capacitance ≈ 50–70 pF/m per conductor | Varies by cable construction; measure yours |
 | 26 AWG ≈ 0.14 Ω/m | Standard wire table, but patch-cable conductor gauge is not guaranteed |
 | JLCPCB panel maximum 400 × 500 mm, V-score constraints | Fabricator policy, changes without notice — confirm at order time |
-| ICM-45686 pin numbering | No datasheet reached. **Still the only unverified pinout**, and the one that matters most |
+| ~~ICM-45686 pin numbering~~ | **Resolved** from DS-000577 Rev 1.0. The guess was wrong on 10 of 14 pins |
 | megaTinyCore `Event`/`Logic` API names | Version-dependent; first compile is the test |
 | `WiFi.setBandMode` availability in pioarduino | Depends on the Arduino-ESP32 revision the platform ships |
 

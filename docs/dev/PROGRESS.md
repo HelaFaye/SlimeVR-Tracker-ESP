@@ -4,6 +4,68 @@ Newest first. Each entry says what changed, what was verified, and what is still
 
 ---
 
+## 2026-09-02p — Datasheets arrived. Four things were wrong.
+
+All four uploaded datasheets read; **no unverified pinouts remain**.
+
+### The ICM-45686 guess was wrong on 10 of 14 pins
+
+TDK DS-000577 Rev 1.0 gives: `AP_SDO` on pin **1** (the guess said 9), `AP_CS` on **12**
+(said 10), `AP_SCLK` on **13** (said 11), `AP_SDI` on **14** (said GND), `INT1` on **4**
+(said INT2), `AUX1_SDIO`/`AUX1_SCLK` on **2/3** (said 1/2). Only the four power pins were
+right by luck.
+
+A board built to that guess would have had MISO, MOSI, SCLK and chip select all on the
+wrong pads — an unassemblable design that passed every check we had, because nothing we
+had could see a datasheet. This is exactly the failure the `verified` flag existed to
+prevent, and the flag did its job: `mklib.py` refused to emit without
+`--allow-unverified` throughout.
+
+### The settle delay was too short
+
+The QMC6309 datasheet gives PSUP (supply ramp) < 10 ms **plus** PORT (power-on-reset)
+< 3 ms, so 13 ms before it accepts an I2C command. `SensorPowerOnSettleMillis` was 10 ms.
+Raised to 15 ms. The symptom would have been a magnetometer that intermittently failed to
+configure — and thanks to the `writeAux` situation, one that reported present and returned
+nothing, which is the hardest kind of fault to chase.
+
+### The magnetometer draws 4x what was estimated
+
+Datasheet Table 2: at ODR 200 Hz with OSR1=8 the QMC6309 draws **2000 µA**, not the
+0.5 mA estimated. The firmware does select that combination — `magdriver.cpp` writes
+`0x0a=0x21` (OSR1=8, normal mode) and `0x0b=0x48` (200 Hz, 8 gauss). Per-node current is
+5.4 mA, not 4; a two-node chain costs ~10% of hub runtime, not 8%.
+
+### GPIO3 is a strapping pin, and the scan table was too optimistic
+
+The module datasheet lists strapping as GPIO25/26/27/28, GPIO7, MTMS and **MTDI** — and
+MTDI is GPIO3, which the ESP-IDF list names by signal rather than number, which is how it
+was missed. The hub used GPIO3 for the local chip select; moved to GPIO0.
+
+Also resolved **risk R1**: GPIO15 is `SPICS1` on modules with in-package PSRAM, so the
+local IMU interrupt moved from GPIO15 to GPIO24. And **risk R2**: GPIO11/12 are the
+module's console UART, so the scan table now excludes them. The C5 scan array is down
+from 14 candidate pins to 9 genuinely safe ones, and the numeric checker now *fails* on
+UART pins rather than noting them.
+
+### Also
+
+- Both boards re-pinned to the real module and sensor pin numbers. The hub's ESP32
+  symbol had entirely invented pin numbers; the QMC6309 had numeric pins where the part
+  is a 4-pad WLCSP (`A1` VSS, `A2` SCL, `B1` VDD, `B2` SDA — confirmed against both the
+  datasheet and the Mumo symbol).
+- Strapping pins that are now unused get defined levels; GPIO7 in particular is
+  documented as needing a driven level rather than hi-Z.
+
+### And a stale test, again
+
+`test_pin_order.py` hardcoded the exact `symbol=` string from `parts.py`, so widening the
+candidate list broke it. Now derived from the module by import. Third time a test has
+been the broken thing; the pattern each time was a fixture duplicating something that
+lives elsewhere.
+
+---
+
 ## 2026-09-02o — The pin-order caveat is now automatic
 
 The last entry left a manual caveat: if the symbol resolver falls back, check the MOSFET

@@ -36,28 +36,27 @@ class Pinout:
 
 ICM45686 = Pinout(
     name="ICM-45686",
-    description="6-axis IMU, SPI host interface + AUX1 I2C master",
+    description="6-axis IMU, SPI host (AP) interface + AUX1 I2C master",
     package="LGA-14_2.5x3mm_P0.5mm",
     pins=[
-        ("1", "AUX1_SCLK", "bidirectional"),
-        ("2", "AUX1_SDIO", "bidirectional"),
-        ("3", "RESV", "passive"),
-        ("4", "INT2", "output"),
+        ("1", "AP_SDO", "output"),  # AP_AD0 in I2C/I3C mode
+        ("2", "AUX1_SDIO", "bidirectional"),  # MAS_DA in I2C master mode
+        ("3", "AUX1_SCLK", "output"),  # MAS_CLK in I2C master mode
+        ("4", "INT1", "output"),
         ("5", "VDDIO", "power_in"),
         ("6", "GND", "power_in"),
-        ("7", "RESV", "passive"),
+        ("7", "RESV", "passive"),  # NC, or tie to VDDIO or GND
         ("8", "VDD", "power_in"),
-        ("9", "SDO", "output"),
-        ("10", "nCS", "input"),
-        ("11", "SCLK", "input"),
-        ("12", "SDI", "input"),
-        ("13", "INT1", "output"),
-        ("14", "GND", "power_in"),
+        ("9", "INT2", "output"),  # FSYNC / CLKIN alternate
+        ("10", "AUX1_CS", "output"),
+        ("11", "AUX1_SDO", "input"),
+        ("12", "AP_CS", "input"),
+        ("13", "AP_SCLK", "input"),  # AP_SCL in I2C mode
+        ("14", "AP_SDI", "input"),  # AP_SDA in I2C mode
     ],
-    verified=False,
-    checked_against="NOT CHECKED. Mumo's IMU.kicad_mod is an LGA-14 land pattern but "
-    "its description cites the BMI160 datasheet - same package, different part. Pin "
-    "functions are certainly not the same.",
+    verified=True,
+    checked_against="TDK InvenSense ICM-45686 datasheet DS-000577 Rev 1.0 "
+    "(2024-08-02), section 'Pin Out Diagram and Signal Description'.",
 )
 
 QMC6309 = Pinout(

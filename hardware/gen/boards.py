@@ -42,16 +42,28 @@ NODE_BOARD = [
          "gate pull-up: sensor OFF whenever the ATtiny is not driving"),
 
     Comp("U2", "ICM45686", "ICM-45686", {
-        "1": "AUX_SCL", "2": "AUX_SDA", "3": "NC", "4": "NC",
-        "5": "VSENSOR", "6": "GND", "7": "NC", "8": "VSENSOR",
-        "9": "SPI_MISO", "10": "CS_IMU", "11": "SPI_SCK", "12": "SPI_MOSI",
-        "13": "NC", "14": "GND",
+        "1": "SPI_MISO",     # AP_SDO
+        "2": "AUX_SDA",      # AUX1_SDIO / MAS_DA
+        "3": "AUX_SCL",      # AUX1_SCLK / MAS_CLK
+        "4": "NC",           # INT1 - unused, see DEC-004
+        "5": "VSENSOR",      # VDDIO
+        "6": "GND",
+        "7": "NC",           # RESV
+        "8": "VSENSOR",      # VDD
+        "9": "NC",           # INT2
+        "10": "NC",          # AUX1_CS - I2C master mode, unused
+        "11": "NC",          # AUX1_SDO - I2C master mode, unused
+        "12": "CS_IMU",      # AP_CS
+        "13": "SPI_SCK",     # AP_SCLK
+        "14": "SPI_MOSI",    # AP_SDI
     }, "gated supply; INT pins deliberately unconnected, see DEC-004"),
 
     Comp("U3", "QMC6309", "QMC6309", {
-        "1": "AUX_SCL", "2": "GND", "3": "AUX_SDA",
-        "4": "VSENSOR", "5": "NC", "6": "NC",
-    }, "on the IMU AUX1 bus, not the chain"),
+        "A1": "GND",         # VSS
+        "A2": "AUX_SCL",     # SCL
+        "B1": "VSENSOR",     # VDD
+        "B2": "AUX_SDA",     # SDA
+    }, "4-pad WLCSP on the IMU AUX1 bus, not the chain"),
 
     Comp("R2", "R", "4k7", {"1": "AUX_SDA", "2": "VSENSOR"}, "AUX1 pull-up"),
     Comp("R3", "R", "4k7", {"1": "AUX_SCL", "2": "VSENSOR"}, "AUX1 pull-up"),
@@ -71,25 +83,45 @@ NODE_BOARD = [
 # ------------------------------------------------------------------- hub board
 
 HUB_BOARD = [
+    # Pin numbers are the module's, from ESP32-C5-WROOM-1 datasheet v1.3 Table 3-1.
+    # GPIO15 (pin 19) is deliberately left NC: on modules with in-package PSRAM it is
+    # SPICS1 and unavailable. GPIO2/3/7/25/26/27/28 are strapping pins and are either
+    # left alone or given a defined level.
     Comp("U1", "ESP32_C5", "ESP32-C5-WROOM-1", {
-        "1": "GND", "2": "3V3", "3": "EN",
-        "4": "BOOT", "5": "VBAT_SENSE", "6": "IO2", "7": "CS_LOCAL",
-        "8": "CHAIN_SCL", "9": "CHAIN_SDA", "10": "CS_STROBE", "11": "IO7",
-        "12": "LED", "13": "IMU_INT", "14": "SPI_SCK", "15": "SPI_MISO",
-        "16": "SPI_MOSI", "17": "USB_DM", "18": "USB_DP",
-        "19": "USB_CC1", "20": "USB_CC2", "25": "GND", "26": "GND",
+        "1": "GND",
+        "2": "3V3",
+        "3": "EN",
+        "4": "STRAP_IO2",     # MTMS, strapping
+        "5": "STRAP_IO3",     # MTDI, strapping (SDIO edge)
+        "6": "CS_LOCAL",      # GPIO0
+        "7": "VBAT_SENSE",    # GPIO1 = ADC1_CH0
+        "8": "CS_STROBE",     # GPIO6
+        "9": "STRAP_IO7",     # JTAG select, strapping
+        "10": "SPI_MOSI",     # GPIO8
+        "11": "SPI_MISO",     # GPIO9
+        "12": "SPI_SCK",      # GPIO10
+        "13": "USB_DM",       # GPIO13
+        "14": "USB_DP",       # GPIO14
+        "15": "BOOT",         # GPIO28, strapping (boot mode)
+        "16": "CHAIN_SDA",    # GPIO5
+        "17": "CHAIN_SCL",    # GPIO4
+        "21": "LED",          # GPIO23
+        "23": "IMU_INT",      # GPIO24
+        "24": "UART_RX",      # GPIO12
+        "25": "UART_TX",      # GPIO11
+        "28": "GND",
+        "29": "GND",          # EPAD
     }, "dual-band; band selected explicitly at runtime, see DEC-002"),
 
     Comp("U2", "ICM45686", "ICM-45686", {
-        "1": "AUX_SCL", "2": "AUX_SDA", "3": "NC", "4": "NC",
+        "1": "SPI_MISO", "2": "AUX_SDA", "3": "AUX_SCL", "4": "IMU_INT",
         "5": "3V3", "6": "GND", "7": "NC", "8": "3V3",
-        "9": "SPI_MISO", "10": "CS_LOCAL", "11": "SPI_SCK", "12": "SPI_MOSI",
-        "13": "IMU_INT", "14": "GND",
+        "9": "NC", "10": "NC", "11": "NC", "12": "CS_LOCAL",
+        "13": "SPI_SCK", "14": "SPI_MOSI",
     }, "hub's own IMU - NOT power gated, and its CS never leaves the board"),
 
     Comp("U3", "QMC6309", "QMC6309", {
-        "1": "AUX_SCL", "2": "GND", "3": "AUX_SDA",
-        "4": "3V3", "5": "NC", "6": "NC",
+        "A1": "GND", "A2": "AUX_SCL", "B1": "3V3", "B2": "AUX_SDA",
     }),
 
     Comp("J1", "RJ45", "RJ45-CHAIN", {
@@ -133,16 +165,23 @@ HUB_BOARD = [
     # Module reset. Without the RC the C5 can boot before its supply is stable.
     Comp("R12", "R", "100k", {"1": "EN", "2": "3V3"}, "EN pull-up"),
     Comp("SW1", "CONN_BATT", "BOOT", {"1": "BOOT", "2": "GND"}, "boot mode button"),
-    Comp("R16", "R", "10k", {"1": "IO2", "2": "GND"},
-         "IO2 is a strapping pin: hold it defined"),
-    Comp("R17", "R", "10k", {"1": "IO7", "2": "3V3"},
-         "IO7 is a strapping pin: hold it defined"),
+    Comp("R16", "R", "10k", {"1": "STRAP_IO2", "2": "GND"},
+         "MTMS strapping pin: hold it defined"),
+    Comp("R17", "R", "10k", {"1": "STRAP_IO3", "2": "GND"},
+         "MTDI strapping pin (SDIO edge): hold it defined"),
+    Comp("R18", "R", "10k", {"1": "STRAP_IO7", "2": "3V3"},
+         "JTAG-select strapping pin: datasheet requires a driven level, not hi-Z"),
+    Comp("J4", "CONN_BATT", "UART", {"1": "UART_TX", "2": "UART_RX"},
+         "console header"),
     Comp("C5", "C", "100n", {"1": "EN", "2": "GND"}, "EN delay"),
 
     Comp("J3", "CONN_USB", "USB-C", {
         "A4": "VUSB", "A9": "VUSB", "A1": "GND", "A12": "GND",
         "A6": "USB_DP", "A7": "USB_DM",
+        "A5": "USB_CC1", "B5": "USB_CC2",
     }, "charge and flash"),
+    # CC pull-downs advertise a sink to the source. They terminate at the connector -
+    # the module has no CC pins.
     Comp("R13", "R", "5k1", {"1": "USB_CC1", "2": "GND"}, "USB-C sink"),
     Comp("R14", "R", "5k1", {"1": "USB_CC2", "2": "GND"}, "USB-C sink"),
 

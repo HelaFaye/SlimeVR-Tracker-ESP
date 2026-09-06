@@ -21,8 +21,18 @@ import sys
 
 HERE = pathlib.Path(__file__).resolve().parent
 PARTS = HERE / "parts.py"
-GOOD = 'symbol="Device:Q_PMOS_GSD|Device:Q_PMOS_GDS|Device:Q_PMOS_DGS|Device:Q_PMOS_DSG"'
-PIN_MAP = 'pin_functions={"1": "G", "2": "S", "3": "D"}'
+# Derived from parts.py rather than hardcoded. An earlier version pinned the exact
+# candidate string, so widening the candidate list silently broke this test - which is
+# the failure mode a test least ought to have.
+import importlib
+import re
+import sys
+
+sys.path.insert(0, str(HERE))
+_parts = importlib.import_module("parts")
+GOOD_SYMBOL = _parts.MOSFET_P.symbol
+PIN_MAP_DICT = _parts.MOSFET_P.pin_functions
+PREFERRED = GOOD_SYMBOL.split("|")[0]
 
 cases = []
 
@@ -38,20 +48,35 @@ case(
     "pin order verified",
 )
 case(
-    "preferred symbol absent, wrong-order alternatives present",
-    lambda s: s.replace("Device:Q_PMOS_GSD|", "Device:Q_PMOS_NOSUCH|"),
+    "every candidate removed",
+    lambda s: s.replace(PREFERRED, "Device:Q_PMOS_NOSUCH").replace(
+        "Device:Q_PMOS_GDS", "Device:Q_PMOS_NOSUCH2"
+    ).replace("Device:Q_PMOS_DGS", "Device:Q_PMOS_NOSUCH3").replace(
+        "Device:Q_PMOS_DSG", "Device:Q_PMOS_NOSUCH4"
+    ).replace("Device:Q_PMOS\"", "Device:Q_PMOS_NOSUCH5\""),
     True,
-    "none has the required pin order",
+    "MOSFET_P",
 )
+def _pin_single_wrong(text):
+    """Replace the MOSFET's whole symbol= expression with one wrongly-ordered symbol."""
+    return re.sub(
+        r'symbol=\((?:[^()]|\([^()]*\))*\),',
+        'symbol="Device:Q_PMOS_GDS",',
+        text,
+        count=1,
+    )
+
+
 case(
     "single pinned symbol with the wrong pin order",
-    lambda s: s.replace(GOOD, 'symbol="Device:Q_PMOS_GDS"'),
+    _pin_single_wrong,
     True,
     "pin 2 should be S but is D",
 )
 case(
     "pin map itself edited wrongly",
-    lambda s: s.replace(PIN_MAP, 'pin_functions={"1": "S", "2": "G", "3": "D"}'),
+    lambda s: s.replace('pin_functions={"1": "G", "2": "S", "3": "D"}',
+                        'pin_functions={"1": "S", "2": "G", "3": "D"}'),
     True,
     "none has the required pin order",
 )
@@ -70,7 +95,7 @@ def run_verify():
 
 def main():
     original = PARTS.read_text()
-    if GOOD not in original or PIN_MAP not in original:
+    if PREFERRED not in original or PIN_MAP_DICT is None:
         print("parts.py no longer matches what this test mutates; update the test.")
         return 2
 
