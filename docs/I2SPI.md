@@ -56,7 +56,8 @@ register transactions; the SPI state machine resets on that edge. So CS cannot b
 low for a sensor's whole polling burst.
 
 If each CS assert and deassert cost an I2C round trip, the arithmetic is fatal: a 3-byte
-I2C write at 400 kHz is ~70 µs, and one FIFO poll is several transactions. The fix is to
+I2C write at 400 kHz is ~72 µs, so framing one transaction costs ~145 µs — and a single
+FIFO poll is several transactions. The fix is to
 make the *frame* free and charge only for *selection*:
 
 - The host writes one short I2C message to arm a node.
@@ -236,7 +237,8 @@ immediately leaving.
 | `CS_STROBE` → sensor CS, strobe mode | < 100 ns, combinational |
 | `ARM` → CS valid | 2 µs (`ArmSettleMicros`) |
 | `ARM` on the wire | ~70 µs at 400 kHz, ~30 µs at 1 MHz |
-| Software-CS assert or deassert | ~60 µs at 400 kHz — bring-up only |
+| Software-CS assert **or** deassert | ~72 µs at 400 kHz (3-byte write) |
+| Software-CS framed transaction (both) | ~145 µs — bring-up only |
 | Sensor power-on → responsive | 10 ms (`SensorPowerOnSettleMillis`) |
 
 Worked example, four sensors at 200 Hz on a 400 kHz chain: 4 arm writes per 5 ms cycle

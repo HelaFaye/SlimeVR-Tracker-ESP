@@ -117,8 +117,9 @@ loudly instead: `ATTinyCSBus` invalidates its cached selection whenever a write 
   write). The host inserts a short guard delay before the first SPI transaction.
 - In strobe mode the propagation from `CS_STROBE` to `CS` is combinational — CCL only,
   no CPU. Budget < 100 ns.
-- In software-CS mode each assert and deassert is a full I2C write, roughly 60 µs at
-  400 kHz. This is why it is a bring-up mode and not the default.
+- In software-CS mode each assert and deassert is a full 3-byte I2C write, ~72 µs at
+  400 kHz, so ~145 µs to frame one transaction. This is why it is a bring-up mode and not
+  the default.
 
 ## Node firmware
 
