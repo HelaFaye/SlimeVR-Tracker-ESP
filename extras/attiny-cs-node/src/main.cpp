@@ -193,35 +193,35 @@ void applyArmedState() {
 #else
 
 void setupStrobePassthrough() {
-	// The CCL LUT inputs that map directly to pins on this part are PA0..PA2, which are
-	// UPDI and TWI. So the strobe reaches the LUT through the event system instead.
+	// LUT1's direct pin inputs live on PORTC, which an 8-pin package does not have, so
+	// the strobe reaches the LUT through the event system instead.
 	Event0.set_generator(gen0::pin_pa6);
-	Event0.set_user(user::ccl0_event_a);
+	Event0.set_user(user::ccl1_event_a);
 	Event0.start();
 
-	Logic0.enable = true;
-	Logic0.input0 = logic::in::event_a;
-	Logic0.input1 = logic::in::masked;
-	Logic0.input2 = logic::in::masked;
+	Logic1.enable = true;
+	Logic1.input0 = logic::in::event_a;
+	Logic1.input1 = logic::in::masked;
+	Logic1.input2 = logic::in::masked;
 	// Truth table: output follows input0. Bit n of the table is the output for input
 	// combination n, so 0b00000010 means "high only when in0 is high".
-	Logic0.truth = 0b00000010;
-	Logic0.output = logic::out::disable;  // port keeps the pin until we arm
-	Logic0.init();
+	Logic1.truth = 0b00000010;
+	Logic1.output = logic::out::disable;  // port keeps the pin until we arm
+	Logic1.init();
 
 	Logic::start();
 }
 
 void applyArmedState() {
 	if (armed && csMode == CsMode::Strobe) {
-		Logic0.output = logic::out::enable;
-		Logic0.init();
+		Logic1.output = logic::out::enable;
+		Logic1.init();
 		return;
 	}
 
 	// Not armed, or armed in software mode: the CCL lets go and the port drives CS.
-	Logic0.output = logic::out::disable;
-	Logic0.init();
+	Logic1.output = logic::out::disable;
+	Logic1.init();
 
 	if (!armed) {
 		digitalWriteFast(PinChipSelect, HIGH);

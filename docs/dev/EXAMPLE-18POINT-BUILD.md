@@ -218,14 +218,16 @@ Estimates, to be measured rather than trusted:
 
 | Item | Current |
 |---|---|
-| ICM-45686, gyro + accel active | ~2.5 mA |
+| ICM-45686, 6-axis low-noise mode | 0.42 mA (datasheet) |
 | QMC6309, 200 Hz continuous | ~0.5 mA |
 | ATtiny412 at 5 MHz / 3.3 V | ~3 mA |
-| **Per extension node** | **~6 mA** |
+| **Per extension node** | **~4 mA** |
 | ESP32-C5 hub, Wi-Fi connected average | ~100 mA (highly variable) |
 
-A two-node chain adds ~12 mA to a ~106 mA hub, so roughly **12% off runtime** for the
-chest and leg hubs, ~6% for the arm hubs. Not free, but the alternative is eight more
+A two-node chain adds ~8 mA to a ~104 mA hub, so roughly **8% off runtime** for the chest
+and leg hubs, ~4% for the arm hubs. (The IMU figure is now the datasheet's 0.42 mA for
+6-axis low-noise mode; an earlier revision of this table guessed 2.5 mA and overstated the
+cost by half.) Not free, but the alternative is eight more
 batteries and eight more Wi-Fi radios.
 
 Drop the ATtiny clock as far as the TWI slave tolerates — it is the largest single draw at

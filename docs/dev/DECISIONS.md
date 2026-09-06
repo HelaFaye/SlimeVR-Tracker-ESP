@@ -272,9 +272,10 @@ same argument as (2) above applies. It is also physically larger than an ATtiny4
 SOIC-8 for strictly less capability.
 
 **What actually matters when substituting.** Any tinyAVR 0/1/2-series part works if it
-has CCL with a usable output pin and TWI slave with dual-address support. On 8-pin
-packages there is exactly one usable CCL output (LUT0 alternate, PA7), which is why the
-pin map in `HARDWARE-RJ45-SPI-BUS.md` is not a free choice.
+has CCL with a usable output pin and TWI slave with dual-address support. On 8-pin packages there is exactly one usable CCL output, and it is **LUT1-OUT on PA7**,
+not LUT0 — PA4 and PA5 do not exist on the package. An earlier revision of this record said
+LUT0, and the firmware was written against that; corrected after checking DS40001911B
+Table 5-1.
 
 ---
 

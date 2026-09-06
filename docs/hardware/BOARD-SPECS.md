@@ -106,7 +106,7 @@ built for this example.
 | `CHAIN_SCL` | PA2 | From cable pin 8. No pull-up on this board |
 | `CS_STROBE` | PA6 | From cable pin 6, input |
 | `CS_IMU` | PA7 | To the IMU's CS. CCL LUT0 alternate output |
-| `SENSOR_AUX` | PA3 | Optional IMU reset or power gate |
+| `SENSOR_PWR` | PA3 | Gate of the VCC pass MOSFET (DEC-014) |
 | `UPDI` | PA0 | Programming pad, 4.7 kΩ to 3V3 |
 
 `SPI_SCK`, `SPI_MOSI` and `SPI_MISO` run from the cable **straight to the IMU** and do not
@@ -119,9 +119,10 @@ hung node can fail to select; it cannot corrupt anyone's data. Keep it that way 
 temptation to route SPI through the MCU "for buffering" would put a 20 MHz part in a 4 MHz
 signal path and make every node a single point of failure for the whole chain.
 
-**PA6/PA7 is not a free choice.** On an 8-pin tinyAVR the only usable CCL output is LUT0's
-alternate on PA7, and the LUT's direct pin inputs (PA0–PA2) are UPDI and TWI — so the
-strobe reaches the LUT through the event system from PA6. If you move to a 14-pin part or
+**PA6/PA7 is not a free choice.** On an 8-pin tinyAVR, PA4/PA5 do not exist, so `LUT0-OUT`
+(PA4) is unavailable and PA7 carries `LUT1-OUT` — use `Logic1`. LUT1's direct pin inputs
+are on PORTC, absent from an 8-pin package, so the strobe arrives via the event system
+from PA6. Verified against DS40001911B Table 5-1. If you move to a 14-pin part or
 a PIC with PPS, this constraint disappears.
 
 **Gate variant.** For a node MCU without CCL, fit a 74LVC1G32 wired

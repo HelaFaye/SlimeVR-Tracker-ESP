@@ -4,6 +4,51 @@ Newest first. Each entry says what changed, what was verified, and what is still
 
 ---
 
+## 2026-09-02l — Verification audit: four claims wrong, two of them live
+
+Full write-up in `docs/dev/VERIFICATION-AUDIT.md`. Roughly thirty load-bearing factual
+claims checked against primary sources.
+
+**The CCL output pin was wrong, and the firmware had been coded against it.** PA7 on an
+8-pin tinyAVR carries `LUT1-OUT`, not LUT0's alternate — `LUT0-OUT` is on PA4, which the
+package does not have. The node firmware configured `Logic0`, whose output cannot reach a
+pin, so the strobe pass-through that the whole performance argument rests on would not
+have worked. Now `Logic1` / `ccl1_event_a`. DS40001911B Table 5-1.
+
+**The LCSC part numbers were fabricated.** Every one. The single one checkable is wrong:
+JLCPCB lists ICM-45686-P as C9900251359, not the C5457057 written here. Stripped to `None`
+with TODOs, so the BOM fails loudly at upload rather than quietly at assembly. This is the
+most expensive error in the project so far by potential consequence.
+
+**ICM-45686 current was overstated ~6x.** 0.42 mA in 6-axis low-noise mode per TDK, not
+the 2.5 mA guessed. Power budget corrected; the chain costs less than claimed.
+
+Verified correct and unchanged: every ESP32-C5 GPIO restriction, the boot-mode pins, ADC1
+placement, the ICM-45686 package and its AUX port, TWI having no alternate position on
+8-pin parts, the ATtiny10 exclusion, the QEMU limitations, and every claim already read
+from source (packet ids, tracker positions, toggle defaults, WHO_AM_I values).
+
+### Two new risks
+
+- **GPIO15 may not exist.** Espressif: on modules with SPI PSRAM that pin is SPICS1. The
+  hub uses it for the local IMU interrupt. Degraded rather than fatal (the driver polls),
+  but it should be a choice, not an accident.
+- **`i2cscan` probes GPIO11/12**, which are the module's console UART. Harmless at chip
+  level, confusing at a bench.
+
+### The pattern worth naming
+
+Both live failures were a *correct conclusion resting on wrong reasoning*. "PA7 is the CCL
+output" is true; "because it is LUT0's alternate" is not — and the code followed the
+reasoning, not the conclusion. Same shape as the `forceArmsFromHMD` polarity error: reading
+a name instead of a definition.
+
+The defences that keep catching this are the mechanical ones — `verify.py`, the
+dangling-net check, the simulation's independent node model, the `verified` flags. None of
+them depend on remembering to be careful.
+
+---
+
 ## 2026-09-02k — Vendored libraries; one of them found a live bug
 
 `docs/I2SPI.md` written: consolidated pinout and protocol specification.
