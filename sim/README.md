@@ -143,3 +143,61 @@ The gate polarity is also modelled: the P-channel FET is off when its gate is hi
 the gate has a pull-up, so an unprogrammed or held-in-reset ATtiny leaves its sensor
 **unpowered**. That is the safe direction — an unpowered IMU cannot drive MISO and cannot
 fight the bus.
+
+
+---
+
+# Full sweep (`sweep.sh`)
+
+Two exhaustive passes, covering opposite halves of the system.
+
+```sh
+sim/sweep.sh                    # every topology, then range of motion offline
+sim/sweep.sh --nodes 10         # 3^10 instead of 3^15, for a quick pass
+sim/sweep.sh --host 127.0.0.1   # also stream ROM at a running server
+```
+
+## Topology: 3^15 configurations, exhaustive
+
+Each of the 15 node ids is independently **absent, an SPI sensor, or an I2C sensor**, so
+the space is 3^15 = **14,348,907** configurations. The sweep walks all of it — not a
+sample, not pairwise. It takes about 150 seconds at ~94,000 configurations per second and
+performs 143 million node polls.
+
+Every I2C sensor in the sweep is deliberately given the **same address, 0x68**. That is
+the case gating exists to make safe, so it is the case worth sweeping rather than avoiding.
+
+Per configuration it checks:
+
+- exactly one chip select asserted at any moment, never two
+- a poll reaches the sensor it addressed and no other
+- I2C sensors sharing an address never both answer
+- absent nodes report absent rather than returning plausible data
+- nothing answers at 0x68 while the chain is disarmed
+
+Exhaustive was worth doing because it was cheap. If it ever stops being cheap, sample —
+but check the timing before assuming, which is how this ended up exhaustive.
+
+## Range of motion
+
+Two poses, both coverage-oriented rather than realistic:
+
+| Pose | What it does |
+|---|---|
+| `rom` | Each joint through its full range, one axis at a time, one part at a time |
+| `rom-all` | Every joint sweeping simultaneously at mutually offset rates |
+
+`rom-all` is the harsher of the two: it puts the whole skeleton into unusual combinations
+at once, which is where inter-bone constraints and proportion assumptions break rather
+than any single joint. `rom` is the one to watch if you want to see which specific joint
+misbehaves.
+
+Ranges are declared per part in `synthetic_tracker.py`'s `ROM` table — wide enough to
+reach the constraint limits and the gimbal-adjacent regions, not anatomical gospel. The
+sweep uses a triangle wave rather than a sine so the extremes are held briefly instead of
+passed through instantaneously.
+
+Without `--host` it validates the generator itself: 120,000 quaternions per pose, all
+checked unit-length. With `--host` it streams at a real server. Measured end to end
+through a loopback listener, the worst quaternion norm error across a full ROM stream is
+4.1e-08.

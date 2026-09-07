@@ -4,6 +4,52 @@ Newest first. Each entry says what changed, what was verified, and what is still
 
 ---
 
+## 2026-09-02t — Exhaustive topology sweep, and range-of-motion poses
+
+`sim/sweep.sh` runs both halves: every chain topology, then full range of motion.
+
+### The topology space is exhaustible, so it was exhausted
+
+Each of the 15 node ids is independently absent, SPI, or I2C: 3^15 = **14,348,907**
+configurations. I expected to have to sample and said so, then measured a small sweep
+first — 159,000 configurations/second at 3^8. Extrapolating said the full space was about
+two and a half minutes, so there was no reason to sample.
+
+Full run: **14,348,907 configurations, 143,489,070 node polls, 152.6 s, no invariant
+violations.** Not pairwise, not random, not a subset.
+
+Every I2C sensor in the sweep shares address 0x68 deliberately. That is the case gating
+exists to make safe, so avoiding it in the sweep would have missed the point.
+
+Per configuration: one-hot chip select, correct sensor reached, no two I2C sensors
+answering, absent nodes reported absent, and nothing answering at 0x68 while disarmed.
+
+Worth noting the general lesson: "exhaustive is infeasible" was an assumption, and it was
+wrong by two orders of magnitude. Measuring cost about a minute.
+
+### Range of motion
+
+Two new poses in the FBT simulator, both coverage-oriented rather than realistic:
+`rom` drives each joint through its full range one axis at a time, `rom-all` sweeps every
+joint simultaneously at mutually offset rates. The second is harsher — it puts the whole
+skeleton into unusual combinations at once, which is where inter-bone constraints break
+rather than any single joint.
+
+Ranges live in a declared `ROM` table, wide enough to reach constraint limits and
+gimbal-adjacent regions. Triangle wave rather than sine, so extremes are held briefly
+instead of passed through.
+
+Verified: 120,000 quaternions per pose all unit-length offline, and streamed end to end
+through a loopback listener with a worst norm error of 4.1e-08 across a full ROM run.
+
+### What this does not cover
+
+The topology sweep exercises the chain model, not the node firmware — same limit recorded
+last entry. And the ROM sweep validates what the tracker *sends*; whether the server's
+skeleton solves those poses sensibly needs a server and a pair of eyes on the visualiser.
+
+---
+
 ## 2026-09-02s — Flexibility audit. Three gaps, two of them mine.
 
 "Is it as flexible as it can be" is easy to answer optimistically, so I checked instead.
