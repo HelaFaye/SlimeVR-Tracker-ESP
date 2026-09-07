@@ -83,7 +83,7 @@ def format_value(val: Any, typ: str, key: str = "<unknown>") -> str:
 LEGACY_SPI_BUS = "DIRECT_SPI(24'000'000, MSBFIRST, SPI_MODE3)"
 
 
-def _format_chip_select(cs: Any) -> str:
+def _format_chip_select(cs: Any, chains: Optional[dict] = None) -> str:
     """A chip select is either a host GPIO (a plain pin string, the original form) or an
     object describing a remote ATtiny node on an RJ45 sensor chain."""
     if cs is None:
@@ -102,6 +102,21 @@ def _format_chip_select(cs: Any) -> str:
         if node is None:
             raise ValueError("attiny chip select is missing 'node'")
 
+        # A named chain resolves to the explicit form, which carries its own pins and
+        # address rather than falling back to the REMOTE_CS_* defaults.
+        chain = cs.get('chain')
+        if chain:
+            c = chains[chain]
+            channel = cs.get('channel', 0)
+            return (
+                f"ATTINY_CS_ON({format_value(c.get('scl'), 'pin')}, "
+                f"{format_value(c.get('sda'), 'pin')}, "
+                f"{format_value(c.get('baseAddress', 0x13), 'number')}, "
+                f"{format_value(c.get('strobe', -1), 'number')}, "
+                f"{format_value(node, 'number')}, "
+                f"{format_value(channel, 'number')})"
+            )
+
         # A node may own several chip selects. Channel 0 is the common case and keeps
         # the shorter descriptor, which is also what a protocol v1 node understands.
         channel = cs.get('channel', 0)
@@ -113,6 +128,47 @@ def _format_chip_select(cs: Any) -> str:
         return f"ATTINY_CS({format_value(node, 'number')})"
 
     raise ValueError(f"Unknown chip select type: {cs_type!r}")
+
+
+def _spi_buses(values: dict) -> dict:
+    """Board SPI config, normalised to a name -> settings map.
+
+    Accepts a single object (the common case, name "default") or a map of named buses,
+    so a board with two SPI peripherals can declare both. Sensors pick one with "bus".
+    """
+    spi = values.get('SPI')
+    if not spi:
+        return {'default': None}
+    if any(k in spi for k in ('sck', 'miso', 'mosi', 'clock', 'bitOrder', 'mode')):
+        return {'default': spi}
+    return spi
+
+
+def _chains(values: dict) -> dict:
+    """Chain config, normalised the same way. Sensors pick one with "chain"."""
+    chains = values.get('REMOTE_CS')
+    if not chains:
+        return {}
+    if any(k in chains for k in ('scl', 'sda', 'strobe', 'baseAddress')):
+        return {'default': chains}
+
+    # Chains sharing an I2C bus must not share an address. They all hear each other's
+    # frames, so an ARM meant for one would arm nodes on the other: differing strobes
+    # keep chip selects safe, but a gated I2C sensor on the unintended chain would
+    # ungate and answer. Invisible at runtime, so refuse it here.
+    seen = {}
+    for name, c in chains.items():
+        bus = (str(c.get('scl')), str(c.get('sda')))
+        addr = c.get('baseAddress', 0x13)
+        key = (bus, addr)
+        if key in seen:
+            raise ValueError(
+                f"chains {seen[key]!r} and {name!r} share I2C bus "
+                f"SCL {bus[0]}/SDA {bus[1]} and address {addr:#04x}; "
+                "give each chain its own address from ATTinyCS::AddressWhitelist"
+            )
+        seen[key] = name
+    return chains
 
 
 def _format_spi_bus(spi: Optional[dict]) -> str:
@@ -162,8 +218,9 @@ def _build_board_flags(defaults: dict, board_name: str) -> List[str]:
     if sensors:
         sensor_list = []
 
-        spi_bus_expression = _format_spi_bus(values.get('SPI'))
-        remote_cs = values.get('REMOTE_CS')
+        spi_buses = _spi_buses(values)
+        chains = _chains(values)
+        remote_cs = chains.get('default')
 
         add('PIN_IMU_SDA', 255, 'pin') # FIXME fix the I2C Scanner so it use the sensor list and not be called when no I2C sensor
         add('PIN_IMU_SCL', 255, 'pin')
@@ -183,6 +240,26 @@ def _build_board_flags(defaults: dict, board_name: str) -> List[str]:
             add('REMOTE_CS_STROBE', remote_cs.get('strobe', -1), 'number')
 
         for index, sensor in enumerate(sensors):
+            if sensor.get('protocol') == 'I2C' and sensor.get('chain'):
+                # An I2C sensor on a chain node: the node gates its SCL, so its address
+                # need not be unique across the chain. See DEC-016.
+                c = chains[sensor['chain']]
+                params = [
+                    format_value(sensor.get('imu'), 'raw'),
+                    f"I2SPI_WIRE_ON({format_value(c.get('scl'), 'pin')}, "
+                    f"{format_value(c.get('sda'), 'pin')}, "
+                    f"{format_value(c.get('baseAddress', 0x13), 'number')}, "
+                    f"{format_value(c.get('strobe', -1), 'number')}, "
+                    f"{format_value(sensor.get('node'), 'number')}, "
+                    f"{format_value(sensor.get('channel', 0), 'number')})",
+                    format_value(sensor.get('rotation'), 'raw'),
+                    'false' if index == 0 else 'true',
+                    f"DIRECT_PIN({format_value(sensor.get('int', 255), 'pin')})",
+                    '0'
+                ]
+                sensor_list.append(f"SENSOR_DESC_ENTRY({','.join(params)})")
+                continue
+
             if sensor.get('protocol') == 'I2C':
                 params = [
                     format_value(sensor.get('imu'), 'raw'),
@@ -200,9 +277,9 @@ def _build_board_flags(defaults: dict, board_name: str) -> List[str]:
             if sensor.get('protocol') == 'SPI':
                 params = [
                     format_value(sensor.get('imu'), 'raw'),
-                    _format_chip_select(sensor.get('cs')),
+                    _format_chip_select(sensor.get('cs'), chains),
                     format_value(sensor.get('rotation'), 'raw'),
-                    spi_bus_expression,
+                    _format_spi_bus(spi_buses[sensor.get('bus', 'default')]),
                     'false' if index == 0 else 'true',
                     f"DIRECT_PIN({format_value(sensor.get('int', 255), 'pin')})",
                     '0'

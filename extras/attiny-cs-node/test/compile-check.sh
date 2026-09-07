@@ -24,6 +24,10 @@ VALID=(
   # Braces quoted: unquoted, bash expands {1,2,3} into three separate words.
   "-DNODE_ID=3 -DEXTERNAL_CS_GATE -DNUM_CHANNELS=3 -DARMED_N_PINS={1,2,3}"
   "-DNODE_ID=1 -DBASE_ADDRESS=0x40"
+  # An I2C sensor on channel 0, gated SCL.
+  "-DNODE_ID=2 -DEXTERNAL_CS_GATE -DI2C_CHANNELS=0b1"
+  # Mixed node: channel 0 an SPI chip select, channel 1 an I2C sensor.
+  "-DNODE_ID=4 -DEXTERNAL_CS_GATE -DNUM_CHANNELS=2 -DARMED_N_PINS={1,2} -DI2C_CHANNELS=0b10"
 )
 # Each of these must be refused by an #error, not silently built.
 INVALID=(
@@ -31,6 +35,7 @@ INVALID=(
   "-DNODE_ID=16"
   "-DNODE_ID=1 -DNUM_CHANNELS=3"   # multi-channel needs the external gate
   ""                                # no NODE_ID at all
+  "-DNODE_ID=1 -DI2C_CHANNELS=0b1"  # SCL gating needs the external gate
 )
 
 echo "Valid configurations:"
