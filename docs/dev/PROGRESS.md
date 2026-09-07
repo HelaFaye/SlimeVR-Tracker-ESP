@@ -4,6 +4,46 @@ Newest first. Each entry says what changed, what was verified, and what is still
 
 ---
 
+## 2026-09-02q — The magnetometer write path was issuing reads
+
+The datasheet settled the `writeAux()` FIXME left open several entries ago, and the
+answer was the bad one.
+
+`I2CM_COMMAND_0` bits [5:4] (`R_W_0`) select the transaction type: **00 write**, 01 read
+with register address, 10 read without, 11 reserved (DS-000577 Rev 1.0 §20.1). The code
+had `01`, copied verbatim from `readAux()` along with its comments. So every auxiliary
+write was issued as a *read*: the device profile and write-data registers were loaded
+correctly and then the transaction fetched a byte instead of sending one.
+
+Combined with the earlier finding that `MagInterface.writeByte` was an empty lambda, this
+means **no magnetometer has ever been configured through this driver** — first the writes
+went nowhere, and once wired up they would have gone out as reads. A QMC6309 would
+enumerate cleanly on `WHO_AM_I` (a read, which works) and then sit in suspend returning
+nothing.
+
+`BURSTLEN_0` for a write is valid over 0001..0110; one byte is in range.
+`I2CM_CONTROL` was already correct - restart off, fast mode, GO.
+
+### One thing deliberately not changed
+
+`readAux()` leaves `I2CM_RESTART_EN` at 0, so a register read is a write phase, a STOP,
+then a fresh START. The QMC6309 datasheet §8.2.4 describes the repeated-START form, and
+most parts tolerate the alternative, so 0 is probably fine.
+
+But it is unproven in *either* direction: since no magnetometer was ever configured
+through this driver, nobody has read live data through this path. Documented at the call
+site as the first thing to try if a magnetometer enumerates and then returns nothing.
+Changing the default would affect every magnetometer on every shipping board, so it wants
+hardware evidence, not a plausible argument.
+
+### Scope note
+
+This is upstream firmware, not the I2SPI work - it affects any SlimeVR tracker pairing an
+ICM-45686 with a magnetometer, not just chained ones. Worth reporting upstream
+independently of everything else here.
+
+---
+
 ## 2026-09-02p — Datasheets arrived. Four things were wrong.
 
 All four uploaded datasheets read; **no unverified pinouts remain**.
