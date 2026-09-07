@@ -177,7 +177,76 @@ def pose_palm_twist(t):
     return base
 
 
+# Plausible joint ranges, degrees, as (pitch, yaw, roll) min/max per body part. Not
+# anatomical gospel - they are wide enough to exercise the solver's constraints and the
+# gimbal-adjacent regions, which is what a range-of-motion sweep is for.
+ROM = {
+    "chest": ((-30, 30), (-45, 45), (-25, 25)),
+    "waist": ((-40, 40), (-40, 40), (-25, 25)),
+    "hip": ((-30, 30), (-30, 30), (-20, 20)),
+    "left_upper_leg": ((-120, 30), (-45, 45), (-30, 45)),
+    "right_upper_leg": ((-120, 30), (-45, 45), (-45, 30)),
+    "left_lower_leg": ((0, 140), (-10, 10), (-10, 10)),
+    "right_lower_leg": ((0, 140), (-10, 10), (-10, 10)),
+    "left_foot": ((-50, 20), (-20, 20), (-15, 15)),
+    "right_foot": ((-50, 20), (-20, 20), (-15, 15)),
+    "left_upper_arm": ((-180, 60), (-90, 90), (0, 180)),
+    "right_upper_arm": ((-180, 60), (-90, 90), (-180, 0)),
+    "left_lower_arm": ((-145, 0), (-90, 90), (0, 180)),
+    "right_lower_arm": ((-145, 0), (-90, 90), (-180, 0)),
+    "left_hand": ((-70, 70), (-90, 90), (0, 180)),
+    "right_hand": ((-70, 70), (-90, 90), (-180, 0)),
+}
+
+
+def _sweep(lo, hi, phase):
+    """Triangle wave across [lo, hi]. Triangle rather than sine so the extremes are held
+    for a moment instead of being passed through instantaneously."""
+    t = (phase % 2.0)
+    frac = t if t <= 1.0 else 2.0 - t
+    return lo + (hi - lo) * frac
+
+
+def pose_rom(t):
+    """Every joint through its full range, one axis at a time, one part at a time.
+
+    This is the coverage pose: it visits every extreme of every tracked part rather than
+    looking natural. Use it to find solver blowups, constraint violations and gimbal
+    artefacts - not to check that walking looks right.
+    """
+    parts = list(ROM)
+    # Three axes per part, a couple of seconds each.
+    step = 2.0
+    total = len(parts) * 3 * step
+    phase = (t % total) / step
+    active = int(phase) // 3
+    axis = int(phase) % 3
+    part = parts[active]
+
+    angles = [0.0, 0.0, 0.0]
+    lo, hi = ROM[part][axis]
+    angles[axis] = _sweep(lo, hi, phase * 2.0)
+    return {part: tuple(angles)}
+
+
+def pose_rom_all(t):
+    """Every joint sweeping simultaneously, each at its own rate.
+
+    Harsher than pose_rom: it puts the whole skeleton at unusual combinations at once,
+    which is where inter-bone constraints and proportion assumptions break rather than
+    any single joint.
+    """
+    out = {}
+    for i, (part, ranges) in enumerate(ROM.items()):
+        rate = 0.17 + 0.031 * i  # mutually irrational-ish, so combinations don't repeat
+        out[part] = tuple(_sweep(lo, hi, t * rate + j * 0.37)
+                          for j, (lo, hi) in enumerate(ranges))
+    return out
+
+
 POSES = {
+    "rom": pose_rom,
+    "rom-all": pose_rom_all,
     "t-pose": pose_t_pose,
     "arms-down": pose_arms_down,
     "sitting": pose_sitting,
