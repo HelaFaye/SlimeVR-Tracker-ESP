@@ -1,4 +1,5 @@
 #pragma once
+#include <cstddef>
 #include <cstdint>
 // Delivers writes to the modelled ATtiny nodes rather than to a real bus.
 struct TwoWire {

@@ -96,6 +96,7 @@ public:
 	inline auto& spiImpl() { return spiImpls; }
 	inline auto& attinyCSBus() { return attinyCSBuses; }
 	inline auto& attinyCSPinInterface() { return attinyCSPinInterfaces; }
+	inline auto& attinyCSWireInterface() { return attinyCSWireInterfaces; }
 
 private:
 	SensorInterface<DirectPinInterface, int> directPinInterfaces{[](int pin) {
@@ -112,6 +113,11 @@ private:
 		directSPIInterfaces;
 	SensorInterface<Sensors::SPIImpl, DirectSPIInterface*, PinInterface*> spiImpls;
 	SensorInterface<ATTinyCSBus, uint8_t, uint8_t, uint8_t, int8_t> attinyCSBuses;
+	SensorInterface<ATTinyCSWireInterface, ATTinyCSBus*, uint8_t, uint8_t>
+		attinyCSWireInterfaces{[](ATTinyCSBus* bus, uint8_t nodeId, uint8_t channel) {
+			return bus != nullptr && nodeId >= ATTinyCS::MinNodeId
+				&& nodeId <= ATTinyCS::MaxNodeId && channel < ATTinyCS::MaxChannels;
+		}};
 	SensorInterface<ATTinyCSPinInterface, ATTinyCSBus*, uint8_t, uint8_t>
 		attinyCSPinInterfaces{[](ATTinyCSBus* bus, uint8_t nodeId, uint8_t channel) {
 			return bus != nullptr && nodeId >= ATTinyCS::MinNodeId

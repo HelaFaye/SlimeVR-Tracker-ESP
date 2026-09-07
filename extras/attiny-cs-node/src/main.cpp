@@ -56,6 +56,10 @@
 
 using namespace SlimeVR::ATTinyCS;
 
+// Protocol v3: one I2C address for the whole chain, every frame exactly three bytes
+// (opcode, target, value). Dual-address TWI is no longer needed, which is what widens
+// the node MCU choice beyond parts with a second-address register. See DEC-015.
+
 #ifndef NODE_ID
 #error "Build with -DNODE_ID=n (1..15). Each node board needs its own image."
 #endif
@@ -80,7 +84,7 @@ using namespace SlimeVR::ATTinyCS;
 #endif
 
 #ifndef BASE_ADDRESS
-#define BASE_ADDRESS 0x30
+#define BASE_ADDRESS 0x13
 #endif
 
 // PA6 in, PA7 out is not a free choice in the default build: on an 8-pin tinyAVR the
@@ -128,6 +132,7 @@ namespace {
 
 bool armed = false;
 uint8_t armedChannel = 0;
+bool answersRead = false;
 CsMode csMode = CsMode::Strobe;
 bool sensorPowered = SensorPowerDefaultOn;
 bool sensorHeldInReset = false;
@@ -239,41 +244,35 @@ void writeChannel(uint8_t channel, uint8_t level) {
 
 #endif  // EXTERNAL_CS_GATE
 
-void handleChainCommand(uint8_t opcode, uint8_t payload, bool hasPayload) {
-	switch (static_cast<ChainCommand>(opcode)) {
-		case ChainCommand::Arm:
-			if (!hasPayload) {
-				return;
-			}
-			// One-hot by construction: every node sees the same broadcast, so there is
-			// no window in which two nodes are armed and two IMUs drive MISO.
-			{
-				const uint8_t wantNode = unpackNodeId(payload);
-				const uint8_t wantChannel = unpackChannel(payload);
+void handleFrame(uint8_t opcode, uint8_t target, uint8_t value) {
+	const bool forUs = unpackNodeId(target) == NODE_ID;
 
-				armed = (wantNode == NODE_ID) && (wantChannel < NUM_CHANNELS);
-				armedChannel = armed ? wantChannel : 0;
-			}
+	switch (static_cast<Command>(opcode)) {
+		case Command::Arm: {
+			// One-hot by construction: every node sees the same frame, so there is no
+			// window in which two are armed and two sensors drive the bus.
+			const uint8_t wantChannel = unpackChannel(target);
+			armed = forUs && (wantChannel < NUM_CHANNELS);
+			armedChannel = armed ? wantChannel : 0;
+			applyArmedState();
+			break;
+		}
+
+		case Command::DisarmAll:
+			armed = false;
+			armedChannel = 0;
 			applyArmedState();
 			break;
 
-		case ChainCommand::PowerAll:
-			if (!hasPayload) {
-				return;
-			}
-			sensorPowered = payload != 0;
+		case Command::PowerAll:
+			sensorPowered = value != 0;
 			applySensorPower();
 			break;
 
-		case ChainCommand::DisarmAll:
+		case Command::ResetAll:
 			armed = false;
 			armedChannel = 0;
-			applyArmedState();
-			break;
-
-		case ChainCommand::ResetAll:
-			armed = false;
-			armedChannel = 0;
+			answersRead = false;
 			csMode = CsMode::Strobe;
 			sensorPowered = SensorPowerDefaultOn;
 			sensorHeldInReset = false;
@@ -281,59 +280,52 @@ void handleChainCommand(uint8_t opcode, uint8_t payload, bool hasPayload) {
 			applyArmedState();
 			break;
 
-		default:
-			break;
-	}
-
-	updateIdentity();
-}
-
-void handleNodeCommand(uint8_t opcode, uint8_t payload, bool hasPayload) {
-	switch (static_cast<NodeCommand>(opcode)) {
-		case NodeCommand::SetCs: {
-			if (!hasPayload || !armed || csMode != CsMode::Software) {
+		case Command::SetCs: {
+			if (!forUs || !armed || csMode != CsMode::Software) {
 				return;
 			}
-			// Payload is (channel << 4) | level. Refuse a channel we are not armed on,
-			// so a stale command cannot drive a chip select out from under the host.
-			const uint8_t channel = (payload >> 4) & 0x0F;
-			const uint8_t level = (payload & 0x01) ? HIGH : LOW;
+			// Refuse a channel we are not armed on, so a stale frame cannot drive a
+			// chip select out from under the host.
+			const uint8_t channel = unpackChannel(target);
 			if (channel != armedChannel) {
 				return;
 			}
-			writeChannel(channel, level);
+			writeChannel(channel, value ? HIGH : LOW);
 			break;
 		}
 
-		case NodeCommand::SetMode:
-			if (!hasPayload) {
+		case Command::SetMode:
+			if (!forUs) {
 				return;
 			}
-			csMode = payload == 0 ? CsMode::Software : CsMode::Strobe;
+			csMode = value == 0 ? CsMode::Software : CsMode::Strobe;
 			applyArmedState();
 			break;
 
-		case NodeCommand::SetSensorPower:
-			if (!hasPayload) {
+		case Command::SetSensorPower:
+			if (!forUs) {
 				return;
 			}
-			sensorPowered = payload != 0;
+			sensorPowered = value != 0;
 			applySensorPower();
 			break;
 
-		case NodeCommand::SetSensorReset:
-			// Cutting the rail is this board's reset: there is no separate reset pin,
-			// and a power cycle is a stronger reset than the sensor's own anyway.
-			if (!hasPayload) {
+		case Command::SetSensorReset:
+			// Cutting the rail is this board's reset: stronger than the sensor's own,
+			// and it costs no extra pin.
+			if (!forUs) {
 				return;
 			}
-			sensorHeldInReset = payload != 0;
+			sensorHeldInReset = value != 0;
 			sensorPowered = !sensorHeldInReset;
 			applySensorPower();
 			break;
 
-		case NodeCommand::Identify:
-			break;  // the identity block is always what a read returns
+		case Command::Identify:
+			// One-hot again: only the addressed node answers the next read, so two
+			// nodes can never drive SDA together.
+			answersRead = forUs;
+			break;
 
 		default:
 			break;
@@ -343,34 +335,28 @@ void handleNodeCommand(uint8_t opcode, uint8_t payload, bool hasPayload) {
 }
 
 void onReceive(int count) {
-	if (count < 1) {
+	// v3 frames are exactly three bytes. Anything else is a v1/v2 host, or noise.
+	if (count != FrameLength) {
+		while (Wire.available()) {
+			Wire.read();
+		}
 		return;
 	}
 
 	const uint8_t opcode = Wire.read();
-	uint8_t payload = 0;
-	const bool hasPayload = count > 1;
-	if (hasPayload) {
-		payload = Wire.read();
-	}
-
-	while (Wire.available()) {
-		Wire.read();
-	}
-
-	// The node listens on two addresses but the core doesn't report which one was
-	// matched, so the chain and unicast opcode spaces are deliberately disjoint. See
-	// docs/dev/ATTINY-CS-PROTOCOL.md.
-	if (opcode < 0x10) {
-		handleChainCommand(opcode, payload, hasPayload);
-	} else if (opcode == static_cast<uint8_t>(ChainCommand::ResetAll)) {
-		handleChainCommand(opcode, payload, hasPayload);
-	} else {
-		handleNodeCommand(opcode, payload, hasPayload);
-	}
+	const uint8_t target = Wire.read();
+	const uint8_t value = Wire.read();
+	handleFrame(opcode, target, value);
 }
 
-void onRequest() { Wire.write(identity, IdentityLength); }
+void onRequest() {
+	// Silence unless the last Identify selected us. Without this every node would drive
+	// SDA on the host's read.
+	if (!answersRead) {
+		return;
+	}
+	Wire.write(identity, IdentityLength);
+}
 
 }  // namespace
 
@@ -403,9 +389,10 @@ void setup() {
 	Wire.onReceive(onReceive);
 	Wire.onRequest(onRequest);
 
-	// megaTinyCore's second_address argument doubles as an address mask; setting bit 0
-	// says "treat this as a second address" rather than as a mask.
-	Wire.begin(BASE_ADDRESS, false, ((BASE_ADDRESS + NODE_ID) << 1) | 0x01);
+	// One address for the whole chain. v2 needed a second, per-node address and relied
+	// on megaTinyCore's dual-address support; v3 does not, which removes both that
+	// dependency and the need for 16 consecutive free addresses on the bus.
+	Wire.begin(BASE_ADDRESS);
 }
 
 void loop() {

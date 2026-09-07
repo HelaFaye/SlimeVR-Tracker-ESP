@@ -50,16 +50,12 @@ void ATTinyCSBus::swapIn() {
 bool ATTinyCSBus::init() {
 	// The unicast addresses run from base+1 to base+MaxNodeId, so both ends of that
 	// range have to stay inside the addresses the I2C spec leaves to us.
-	m_addressValid
-		= m_baseAddress >= AddressMin && (m_baseAddress + MaxNodeId) <= AddressMax;
+	m_addressValid = m_baseAddress >= AddressMin && m_baseAddress <= AddressMax;
 
 	if (!m_addressValid) {
 		m_Logger.error(
-			"Base address 0x%02X is out of range: nodes occupy 0x%02X-0x%02X and the "
-			"usable I2C range is 0x%02X-0x%02X",
+			"Chain address 0x%02X is outside the usable I2C range 0x%02X-0x%02X",
 			m_baseAddress,
-			m_baseAddress,
-			m_baseAddress + MaxNodeId,
 			AddressMin,
 			AddressMax
 		);
@@ -124,7 +120,8 @@ bool ATTinyCSBus::isNodePresent(uint8_t nodeId) const {
 	return (m_presentNodes & static_cast<uint16_t>(1u << nodeId)) != 0;
 }
 
-bool ATTinyCSBus::writeChain(ChainCommand command, uint8_t payload, bool hasPayload) {
+// One address, one frame shape: opcode, target, value. See DEC-015.
+bool ATTinyCSBus::writeFrame(Command command, uint8_t target, uint8_t value) {
 	if (!m_addressValid) {
 		return false;
 	}
@@ -133,22 +130,8 @@ bool ATTinyCSBus::writeChain(ChainCommand command, uint8_t payload, bool hasPayl
 
 	Wire.beginTransmission(m_baseAddress);
 	Wire.write(static_cast<uint8_t>(command));
-	if (hasPayload) {
-		Wire.write(payload);
-	}
-	return Wire.endTransmission() == 0;
-}
-
-bool ATTinyCSBus::writeNode(uint8_t nodeId, NodeCommand command, uint8_t payload) {
-	if (!m_addressValid) {
-		return false;
-	}
-
-	swapIn();
-
-	Wire.beginTransmission(static_cast<uint8_t>(m_baseAddress + nodeId));
-	Wire.write(static_cast<uint8_t>(command));
-	Wire.write(payload);
+	Wire.write(target);
+	Wire.write(value);
 	return Wire.endTransmission() == 0;
 }
 
@@ -159,7 +142,7 @@ bool ATTinyCSBus::select(uint8_t nodeId, uint8_t channel) {
 		return true;
 	}
 
-	if (!writeChain(ChainCommand::Arm, target, true)) {
+	if (!writeFrame(Command::Arm, target, 0)) {
 		// Drop our cached belief rather than assume the write landed. Re-arming costs
 		// one short write; being wrong costs reading the wrong sensor's registers.
 		m_armedTarget = 0;
@@ -173,7 +156,9 @@ bool ATTinyCSBus::select(uint8_t nodeId, uint8_t channel) {
 }
 
 void ATTinyCSBus::writeCs(uint8_t nodeId, uint8_t channel, uint8_t level) {
-	if (level != LOW && m_armedTarget != packTarget(nodeId, channel)) {
+	const uint8_t target = packTarget(nodeId, channel);
+
+	if (level != LOW && m_armedTarget != target) {
 		// Releasing a chip select we never managed to assert - normally because the arm
 		// write failed. Arming now would spend an I2C write reaching a state we are
 		// immediately leaving, and would arm a node as a side effect of releasing it.
@@ -195,7 +180,7 @@ void ATTinyCSBus::writeCs(uint8_t nodeId, uint8_t channel, uint8_t level) {
 		return;
 	}
 
-	if (!writeNode(nodeId, NodeCommand::SetCs, packSetCs(channel, level))) {
+	if (!writeFrame(Command::SetCs, target, level == LOW ? 0 : 1)) {
 		// A dropped CS write means the next SPI transfer clocks against an unknown chip
 		// select, which produces data that looks plausible and is wrong. Say so, and
 		// force a re-arm so the next attempt re-establishes state from scratch.
@@ -213,18 +198,12 @@ bool ATTinyCSBus::probe(uint8_t nodeId) {
 		return false;
 	}
 
-	swapIn();
-
-	Wire.beginTransmission(static_cast<uint8_t>(m_baseAddress + nodeId));
-	Wire.write(static_cast<uint8_t>(NodeCommand::Identify));
-	if (Wire.endTransmission() != 0) {
+	// Identify latches which node answers the next read - one-hot, like arming.
+	if (!writeFrame(Command::Identify, packTarget(nodeId, DefaultChannel), 0)) {
 		return false;
 	}
 
-	const uint8_t read = Wire.requestFrom(
-		static_cast<uint8_t>(m_baseAddress + nodeId),
-		IdentityLength
-	);
+	const uint8_t read = Wire.requestFrom(m_baseAddress, IdentityLength);
 	if (read != IdentityLength) {
 		return false;
 	}
@@ -279,11 +258,15 @@ bool ATTinyCSBus::probe(uint8_t nodeId) {
 }
 
 bool ATTinyCSBus::setSensorPower(uint8_t nodeId, bool on) {
-	return writeNode(nodeId, NodeCommand::SetSensorPower, on ? 1 : 0);
+	return writeFrame(
+		Command::SetSensorPower,
+		packTarget(nodeId, DefaultChannel),
+		on ? 1 : 0
+	);
 }
 
 bool ATTinyCSBus::setAllSensorPower(bool on) {
-	return writeChain(ChainCommand::PowerAll, on ? 1 : 0, true);
+	return writeFrame(Command::PowerAll, packTarget(NoNode, 0), on ? 1 : 0);
 }
 
 void ATTinyCSBus::stageSensorPowerUp() {
@@ -313,7 +296,7 @@ void ATTinyCSBus::stageSensorPowerUp() {
 }
 
 void ATTinyCSBus::disarmAll() {
-	writeChain(ChainCommand::DisarmAll, 0, false);
+	writeFrame(Command::DisarmAll, packTarget(NoNode, 0), 0);
 	m_armedTarget = 0;
 
 	if (usesStrobe()) {
@@ -327,6 +310,23 @@ std::string ATTinyCSBus::toString() const {
 		 + std::to_string(m_sdaPin) + ", base " + std::to_string(m_baseAddress)
 		 + (usesStrobe() ? ", strobe " + std::to_string(m_strobePin) : ", no strobe")
 		 + ")";
+}
+
+bool ATTinyCSWireInterface::init() {
+	// Same reasoning as the pin interface: a missing node has to surface as a missing
+	// sensor, not as a failed interface.
+	return true;
+}
+
+void ATTinyCSWireInterface::swapIn() {
+	// Arming ungates this node's sensor SCL and gates every other node's. From here the
+	// caller does ordinary Wire traffic; the sensor's own address is irrelevant to
+	// anyone else on the chain because nobody else can hear the clock.
+	m_bus->select(m_nodeId, m_channel);
+}
+
+bool ATTinyCSWireInterface::isNodePresent() const {
+	return m_bus != nullptr && m_bus->isNodePresent(m_nodeId);
 }
 
 bool ATTinyCSPinInterface::init() {
