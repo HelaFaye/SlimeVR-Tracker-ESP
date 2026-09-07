@@ -133,10 +133,12 @@ def _build_board_flags(defaults: dict, board_name: str) -> List[str]:
                 ]
                 sensor_list.append(f"SENSOR_DESC_ENTRY({','.join(params)})")
 
+            # serialcommands.cpp prints PIN_IMU_INT unconditionally, and add() skips
+            # None, so a sensor without an `int` produced a config that fails to build.
             if index == 0: # FIXME: fix the CONFIG serial command so it use the sensor list
-                add('PIN_IMU_INT', sensor.get('int'), 'pin')
+                add('PIN_IMU_INT', sensor.get('int', 255), 'pin')
             elif index == 1:
-                add('PIN_IMU_INT_2', sensor.get('int'), 'pin')
+                add('PIN_IMU_INT_2', sensor.get('int', 255), 'pin')
         add('SENSOR_DESC_LIST', f"'{' '.join(sensor_list)}'", 'raw')
 
 
