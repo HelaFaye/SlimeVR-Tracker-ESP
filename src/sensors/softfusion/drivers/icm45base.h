@@ -391,9 +391,9 @@ struct ICM45Base {
 			| (0b0001 << 0)  // Read 1 byte
 		);
 		writeBankRegister<typename BaseRegs::I2CMControl>(
-			(0b0 << 6)  // No restarts
-			| (0b0 << 3)  // Fast mode
-			| (0b1 << 0)  // Start transaction
+			(0b0 << 6)  // I2CM_RESTART_EN: no restart (a write has only one phase)
+			| (0b0 << 3)  // I2CM_SPEED: 0 = fast mode
+			| (0b1 << 0)  // I2CM_GO
 		);
 
 		uint8_t lastStatus;
