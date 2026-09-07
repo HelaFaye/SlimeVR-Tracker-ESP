@@ -366,6 +366,21 @@ struct ICM45Base {
 		writeBankRegister<typename BaseRegs::I2CMDevProfile1>(deviceId);
 	}
 
+	/**
+	 * NOTE on I2CM_RESTART_EN, which this leaves at 0.
+	 *
+	 * A register read is two phases - write the register address, then read the data -
+	 * and the ICM-45686 can bridge them with a repeated START (RESTART_EN = 1) or with
+	 * a STOP followed by a fresh START (0). The QMC6309 datasheet section 8.2.4
+	 * describes the repeated-START form, and most parts tolerate the other, so 0 is
+	 * probably fine.
+	 *
+	 * It is unproven either way: until the writeAux fix below, no magnetometer on this
+	 * driver was ever configured, so nobody has read live data through this path. If a
+	 * magnetometer enumerates but returns nothing, try RESTART_EN = 1 before suspecting
+	 * anything else. Changing the default affects every mag on every board, so it wants
+	 * hardware evidence first.
+	 */
 	uint8_t readAux(uint8_t address) {
 		writeBankRegister<typename BaseRegs::I2CMDevProfile0>(address);
 
@@ -398,13 +413,20 @@ struct ICM45Base {
 	}
 
 	void writeAux(uint8_t address, uint8_t value) {
+		// I2CM_COMMAND_0 bits [5:4] (R_W_0) select the transaction type:
+		//   00 write, 01 read with register address, 10 read without, 11 reserved.
+		// This was 01 - copied from readAux() along with its comments - so every
+		// auxiliary write was issued as a read and no magnetometer configuration ever
+		// reached the part. ICM-45686 datasheet DS-000577 Rev 1.0, section 20.1.
+		//
+		// BURSTLEN_0 for a write is valid over 0001..0110 (1-6 bytes); we send one.
 		writeBankRegister<typename BaseRegs::I2CMDevProfile0>(address);
 		writeBankRegister<typename BaseRegs::I2CMWrData0>(value);
 		writeBankRegister<typename BaseRegs::I2CMCommand0>(
 			(0b1 << 7)  // Last transaction
 			| (0b0 << 6)  // Channel 0
-			| (0b01 << 4)  // Read with register
-			| (0b0001 << 0)  // Read 1 byte
+			| (0b00 << 4)  // Write operation
+			| (0b0001 << 0)  // 1 byte
 		);
 		writeBankRegister<typename BaseRegs::I2CMControl>(
 			(0b0 << 6)  // No restarts
