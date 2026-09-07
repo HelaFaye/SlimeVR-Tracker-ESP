@@ -3,14 +3,16 @@
  *
  * Build and run: sim/run.sh
  */
+#include <Wire.h>
+
 #include <cstdio>
 #include <string>
 
 #include "ATTinyCSInterface.h"
 #include "DirectPinInterface.h"
+#include "DirectSPIInterface.h"
 #include "SPIImpl.h"
 #include "chain_model.h"
-#include "DirectSPIInterface.h"
 
 using namespace sim;
 
@@ -57,11 +59,12 @@ void scenarioBasicChain() {
 	std::printf("\n== Four-node chain, strobe mode ==\n");
 	resetChain(4);
 
-	SlimeVR::ATTinyCSBus bus(4, 5, 0x30, 6);
+	SlimeVR::ATTinyCSBus bus(4, 5, SlimeVR::ATTinyCS::DefaultBaseAddress, 6);
 	bus.init();
 	check(g_chain.failures == 0, "enumeration asserts no chip select");
 
-	SlimeVR::DirectSPIInterface spi(&SPI, SPISettings(4000000, MSBFIRST, SPI_MODE3), 10, 11, 12);
+	SlimeVR::DirectSPIInterface
+		spi(&SPI, SPISettings(4000000, MSBFIRST, SPI_MODE3), 10, 11, 12);
 	spi.init();
 
 	std::vector<SlimeVR::ATTinyCSPinInterface> pins;
@@ -101,9 +104,10 @@ void scenarioBasicChain() {
 void scenarioRepeatPollsAreFree() {
 	std::printf("\n== Repeated access to the same sensor ==\n");
 	resetChain(2);
-	SlimeVR::ATTinyCSBus bus(4, 5, 0x30, 6);
+	SlimeVR::ATTinyCSBus bus(4, 5, SlimeVR::ATTinyCS::DefaultBaseAddress, 6);
 	bus.init();
-	SlimeVR::DirectSPIInterface spi(&SPI, SPISettings(4000000, MSBFIRST, SPI_MODE3), 10, 11, 12);
+	SlimeVR::DirectSPIInterface
+		spi(&SPI, SPISettings(4000000, MSBFIRST, SPI_MODE3), 10, 11, 12);
 	spi.init();
 	SlimeVR::ATTinyCSPinInterface pin(&bus, 1, 0);
 	SlimeVR::Sensors::SPIImpl imu(&spi, &pin);
@@ -113,9 +117,15 @@ void scenarioRepeatPollsAreFree() {
 	for (int i = 0; i < 20; i++) {
 		imu.readReg(0x72);
 	}
-	std::printf("     20 reads of an already-armed node: %d I2C writes\n", g_chain.stats.i2cWrites);
+	std::printf(
+		"     20 reads of an already-armed node: %d I2C writes\n",
+		g_chain.stats.i2cWrites
+	);
 	check(g_chain.stats.i2cWrites == 0, "no I2C traffic while the target is unchanged");
-	check(g_chain.stats.strobeToggles == 40, "each transaction framed by a strobe toggle");
+	check(
+		g_chain.stats.strobeToggles == 40,
+		"each transaction framed by a strobe toggle"
+	);
 }
 
 void scenarioMissingNode() {
@@ -123,10 +133,11 @@ void scenarioMissingNode() {
 	resetChain(3);
 	g_chain.nodes[1].present = false;  // node 2 absent
 
-	SlimeVR::ATTinyCSBus bus(4, 5, 0x30, 6);
+	SlimeVR::ATTinyCSBus bus(4, 5, SlimeVR::ATTinyCS::DefaultBaseAddress, 6);
 	bus.init();
 
-	SlimeVR::DirectSPIInterface spi(&SPI, SPISettings(4000000, MSBFIRST, SPI_MODE3), 10, 11, 12);
+	SlimeVR::DirectSPIInterface
+		spi(&SPI, SPISettings(4000000, MSBFIRST, SPI_MODE3), 10, 11, 12);
 	spi.init();
 	SlimeVR::ATTinyCSPinInterface present(&bus, 1, 0);
 	SlimeVR::ATTinyCSPinInterface absent(&bus, 2, 0);
@@ -143,16 +154,18 @@ void scenarioIdleSensorIsNotMistakenForAbsent() {
 	resetChain(1);
 	g_chain.nodes[0].sensors[0].configured = false;  // data registers read 0x00
 
-	SlimeVR::ATTinyCSBus bus(4, 5, 0x30, 6);
+	SlimeVR::ATTinyCSBus bus(4, 5, SlimeVR::ATTinyCS::DefaultBaseAddress, 6);
 	bus.init();
-	SlimeVR::DirectSPIInterface spi(&SPI, SPISettings(4000000, MSBFIRST, SPI_MODE3), 10, 11, 12);
+	SlimeVR::DirectSPIInterface
+		spi(&SPI, SPISettings(4000000, MSBFIRST, SPI_MODE3), 10, 11, 12);
 	spi.init();
 	SlimeVR::ATTinyCSPinInterface pin(&bus, 1, 0);
 	SlimeVR::Sensors::SPIImpl imu(&spi, &pin);
 
 	uint8_t probe[4];
 	imu.readBytes(0x00, 4, probe);
-	const bool allZero = probe[0] == 0 && probe[1] == 0 && probe[2] == 0 && probe[3] == 0;
+	const bool allZero
+		= probe[0] == 0 && probe[1] == 0 && probe[2] == 0 && probe[3] == 0;
 	check(allZero, "an idle ICM-45686 really does read 0x00 from its low registers");
 	check(
 		imu.hasSensorOnBus(),
@@ -164,9 +177,10 @@ void scenarioLocalAndRemoteShareTheBus() {
 	std::printf("\n== Local chip select alongside remote ones ==\n");
 	resetChain(2, 1, /*localCs=*/3);
 
-	SlimeVR::ATTinyCSBus bus(4, 5, 0x30, 6);
+	SlimeVR::ATTinyCSBus bus(4, 5, SlimeVR::ATTinyCS::DefaultBaseAddress, 6);
 	bus.init();
-	SlimeVR::DirectSPIInterface spi(&SPI, SPISettings(4000000, MSBFIRST, SPI_MODE3), 10, 11, 12);
+	SlimeVR::DirectSPIInterface
+		spi(&SPI, SPISettings(4000000, MSBFIRST, SPI_MODE3), 10, 11, 12);
 	spi.init();
 
 	DirectPinInterface localPin(3);
@@ -186,9 +200,10 @@ void scenarioMultiChannel() {
 	std::printf("\n== Protocol v2 channels: 2 nodes x 3 channels ==\n");
 	resetChain(2, 3);
 
-	SlimeVR::ATTinyCSBus bus(4, 5, 0x30, 6);
+	SlimeVR::ATTinyCSBus bus(4, 5, SlimeVR::ATTinyCS::DefaultBaseAddress, 6);
 	bus.init();
-	SlimeVR::DirectSPIInterface spi(&SPI, SPISettings(4000000, MSBFIRST, SPI_MODE3), 10, 11, 12);
+	SlimeVR::DirectSPIInterface
+		spi(&SPI, SPISettings(4000000, MSBFIRST, SPI_MODE3), 10, 11, 12);
 	spi.init();
 
 	std::vector<SlimeVR::ATTinyCSPinInterface> pins;
@@ -213,7 +228,8 @@ void scenarioMultiChannel() {
 		pollSensor(imu);
 	}
 	std::printf("     6 sensors on 2 nodes: %d I2C writes\n", g_chain.stats.i2cWrites);
-	// Worth demonstrating rather than asserting in prose: channels save nodes, not traffic.
+	// Worth demonstrating rather than asserting in prose: channels save nodes, not
+	// traffic.
 	check(
 		g_chain.stats.i2cWrites == 6,
 		"channels reduce node count, not arm writes (one per sensor either way)"
@@ -224,9 +240,10 @@ void scenarioMultiChannel() {
 void scenarioFailedArmDoesNotPulseStrobe() {
 	std::printf("\n== I2C failure during arm ==\n");
 	resetChain(2);
-	SlimeVR::ATTinyCSBus bus(4, 5, 0x30, 6);
+	SlimeVR::ATTinyCSBus bus(4, 5, SlimeVR::ATTinyCS::DefaultBaseAddress, 6);
 	bus.init();
-	SlimeVR::DirectSPIInterface spi(&SPI, SPISettings(4000000, MSBFIRST, SPI_MODE3), 10, 11, 12);
+	SlimeVR::DirectSPIInterface
+		spi(&SPI, SPISettings(4000000, MSBFIRST, SPI_MODE3), 10, 11, 12);
 	spi.init();
 	SlimeVR::ATTinyCSPinInterface pin1(&bus, 1, 0);
 	SlimeVR::ATTinyCSPinInterface pin2(&bus, 2, 0);
@@ -248,7 +265,10 @@ void scenarioFailedArmDoesNotPulseStrobe() {
 	// Node 1 is still *armed*: the failed write never reached the chain, so no node
 	// changed state. That is fine and is why the release path drives the strobe high -
 	// arming is a latch, assertion is the latch AND the strobe.
-	check(g_chain.nodes[0].armed, "node 1 remains armed (the chain never saw the write)");
+	check(
+		g_chain.nodes[0].armed,
+		"node 1 remains armed (the chain never saw the write)"
+	);
 	check(
 		!g_chain.nodes[0].csAsserted(0),
 		"...but its chip select is NOT asserted, because the strobe was driven idle"
@@ -272,7 +292,7 @@ void scenarioStagedPowerUp() {
 	}
 	check(!anyPowered, "sensors are gated off before init()");
 
-	SlimeVR::ATTinyCSBus bus(4, 5, 0x30, 6);
+	SlimeVR::ATTinyCSBus bus(4, 5, SlimeVR::ATTinyCS::DefaultBaseAddress, 6);
 	bus.init();
 
 	int powered = 0;
@@ -287,12 +307,12 @@ void scenarioStagedPowerUp() {
 		"never more than one sensor ramping at a time (inrush is staged)"
 	);
 	check(
-		g_chain.stats.delayMillis
-			== 4 * SlimeVR::ATTinyCS::SensorPowerOnSettleMillis,
+		g_chain.stats.delayMillis == 4 * SlimeVR::ATTinyCS::SensorPowerOnSettleMillis,
 		"one settle delay per powered sensor"
 	);
 
-	SlimeVR::DirectSPIInterface spi(&SPI, SPISettings(4000000, MSBFIRST, SPI_MODE3), 10, 11, 12);
+	SlimeVR::DirectSPIInterface
+		spi(&SPI, SPISettings(4000000, MSBFIRST, SPI_MODE3), 10, 11, 12);
 	spi.init();
 	SlimeVR::ATTinyCSPinInterface pin(&bus, 1, 0);
 	SlimeVR::Sensors::SPIImpl imu(&spi, &pin);
@@ -309,16 +329,60 @@ void scenarioNodeRefusesPower() {
 	resetChain(2);
 	g_chain.nodes[1].present = false;  // node 2 not on the chain at all
 
-	SlimeVR::ATTinyCSBus bus(4, 5, 0x30, 6);
+	SlimeVR::ATTinyCSBus bus(4, 5, SlimeVR::ATTinyCS::DefaultBaseAddress, 6);
 	bus.init();
 
 	check(g_chain.nodes[0].sensorPowered, "present node powered its sensor");
 	check(
-		g_chain.stats.delayMillis
-			== 1 * SlimeVR::ATTinyCS::SensorPowerOnSettleMillis,
+		g_chain.stats.delayMillis == 1 * SlimeVR::ATTinyCS::SensorPowerOnSettleMillis,
 		"absent node costs no settle delay"
 	);
 	check(g_chain.failures == 0, "no bus fight");
+}
+
+void scenarioIdenticalI2CSensors() {
+	std::printf("\n== I2C sensors on the chain, all at the same address ==\n");
+	resetChain(4);
+	for (auto& n : g_chain.nodes) {
+		n.hasWireSensor = true;
+		n.wireAddress = 0x68;  // every ICM/BMI/MPU part this firmware supports
+	}
+
+	SlimeVR::ATTinyCSBus bus(4, 5, SlimeVR::ATTinyCS::DefaultBaseAddress, 6);
+	bus.init();
+
+	std::vector<SlimeVR::ATTinyCSWireInterface> wires;
+	for (uint8_t i = 1; i <= 4; i++) {
+		wires.emplace_back(&bus, i, 0);
+	}
+
+	// Talking to each in turn is what a poll cycle does.
+	g_chain.stats.reset();
+	bool reachedAll = true;
+	for (auto& w : wires) {
+		w.swapIn();
+		Wire.beginTransmission(0x68);
+		Wire.write(0x00);
+		reachedAll = reachedAll && Wire.endTransmission() == 0;
+	}
+	check(reachedAll, "all four sensors reachable despite sharing address 0x68");
+	check(
+		g_chain.stats.wireSensorWrites == 4,
+		"each write reached exactly one sensor, never two"
+	);
+	check(g_chain.failures == 0, "no bus fight between identical addresses");
+	std::printf(
+		"     4 identical sensors: %d arm writes, %d sensor writes\n",
+		g_chain.stats.i2cWrites - g_chain.stats.wireSensorWrites,
+		g_chain.stats.wireSensorWrites
+	);
+
+	// With nothing armed, nobody should answer at all.
+	bus.disarmAll();
+	Wire.beginTransmission(0x68);
+	Wire.write(0x00);
+	check(Wire.endTransmission() != 0, "disarmed: no sensor answers at 0x68");
+	check(g_chain.failures == 0, "one-hot held across the whole scenario");
 }
 
 void scenarioMisflashedNode() {
@@ -326,7 +390,7 @@ void scenarioMisflashedNode() {
 	resetChain(2);
 	g_chain.nodes[1].reportedId = 7;  // answers at 2, claims to be 7
 
-	SlimeVR::ATTinyCSBus bus(4, 5, 0x30, 6);
+	SlimeVR::ATTinyCSBus bus(4, 5, SlimeVR::ATTinyCS::DefaultBaseAddress, 6);
 	bus.init();
 	check(true, "enumeration completes and logs the mismatch (see output above)");
 	check(g_chain.failures == 0, "mismatch does not corrupt the bus");
@@ -346,6 +410,7 @@ int main() {
 	scenarioFailedArmDoesNotPulseStrobe();
 	scenarioStagedPowerUp();
 	scenarioNodeRefusesPower();
+	scenarioIdenticalI2CSensors();
 	scenarioMisflashedNode();
 
 	std::printf("\n%d checks, %d failed\n", checks, failed);

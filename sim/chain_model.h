@@ -40,7 +40,16 @@ struct Node {
 
 	Sensor sensors[SlimeVR::ATTinyCS::MaxChannels];
 
+	/// An I2C sensor behind this node's gated SCL. Its address may be identical to any
+	/// other node's - that is the whole point of gating.
+	bool hasWireSensor = false;
+	uint8_t wireAddress = 0x68;
+
+	/// True when this node's sensor can see clock, i.e. when the node is armed.
+	[[nodiscard]] bool wireSensorListening() const { return armed && hasWireSensor; }
+
 	bool settled = true;
+	bool answersRead = false;
 
 	void onWrite(const std::vector<uint8_t>& bytes, bool toChainAddress);
 	void setSensorPower(bool on);
@@ -50,6 +59,7 @@ struct Node {
 
 struct Stats {
 	int i2cWrites = 0;
+	int wireSensorWrites = 0;
 	int powerOnEvents = 0;
 	int maxSimultaneousPowerUps = 0;
 	int i2cBytes = 0;

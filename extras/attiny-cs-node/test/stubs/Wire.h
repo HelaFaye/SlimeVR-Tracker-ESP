@@ -2,6 +2,7 @@
 #include <stdint.h>
 #include <stddef.h>
 struct TwoWire {
+  void begin(uint8_t);
   void begin(uint8_t, bool, uint8_t);
   void onReceive(void (*)(int));
   void onRequest(void (*)(void));

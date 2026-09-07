@@ -1,6 +1,6 @@
 # I2SPI
 
-**SPI data, I2C selection.** A way to hang many SPI sensors off one off-the-shelf flat
+**SPI data, I2C selection** — and, since v3, I2C sensor data too. A way to hang many SPI sensors off one off-the-shelf flat
 RJ45 cable, using an addressed microcontroller at each sensor to own its chip select.
 
 Version 2 of the wire protocol. This document is the specification; the reasoning behind
@@ -78,18 +78,40 @@ timer-poll the FIFO. What is lost is INT-driven wake, which costs power, not cor
 
 ## 3. Addressing
 
-Every node listens on two 7-bit addresses:
+**The whole chain occupies one 7-bit address**, `0x13` by default. Nodes are distinguished
+by a target byte inside the frame, not by address.
 
-| Address | Purpose |
-|---|---|
-| `0x30` (`BaseAddress`) | Shared. All nodes listen. One-hot arm. |
-| `0x30 + nodeId` | Unicast. Identify, configuration, software-CS fallback. |
+This is not a stylistic choice. The previous scheme needed sixteen consecutive free
+addresses, and there is no such window on a bus that also carries the sensors this
+firmware supports — see `hardware/gen/i2c_address_map.py`, which computes the map from the
+driver sources rather than from memory:
 
-`nodeId` is `1..15`; `0` means "nothing armed" and is the defined idle state. Default
-unicast range `0x31..0x3F` sits clear of common IMU addresses (`0x4A/0x4B`, `0x68/0x69`)
-and of the `0x20` MCP23x17 block, so a chain can share a bus with local I2C sensors.
-`AddressMin = 0x08` and `AddressMax = 0x77` bound the usable range; the host validates that
-`base` through `base + 15` fits inside it and refuses to transact otherwise.
+```
+  16 consecutive: NO CLEAR WINDOW
+   9 consecutive: 0x0E-0x10
+   1 address:     dozens of choices
+```
+
+### Whitelist
+
+Ranked by distance from the nearest address any supported or common part uses:
+
+| Address | Nearest occupied neighbour |
+|---:|---|
+| **0x13** (default) | 6 away |
+| 0x12, 0x14 | 5 away |
+| 0x11, 0x15 | 4 away |
+| 0x34, 0x35 | 4 away |
+
+`sim/check_numbers.py` fails if the configured address drifts off this list, and
+`i2c_address_map.py --check` fails if it collides with anything. Regenerate the ranking
+after adding a sensor driver; the map is derived, not maintained by hand.
+
+Avoid `0x30`: it is the MMC5983MA magnetometer.
+
+`nodeId` is `1..15`; `0` means "nothing armed" and is the defined idle state. A node may
+own up to 16 channels. Node id and channel pack into one target byte as
+`(nodeId << 4) | channel`.
 
 A node may own up to 16 chip selects, addressed by **channel** `0..15`. Node id and channel
 are packed into one byte: `(nodeId << 4) | channel`.

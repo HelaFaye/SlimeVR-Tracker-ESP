@@ -4,6 +4,77 @@ Newest first. Each entry says what changed, what was verified, and what is still
 
 ---
 
+## 2026-09-02r — I2C sensors on the chain, and the address problem that forced protocol v3
+
+Asked for two things: I2C sensors on the chain alongside SPI ones, and an address
+whitelist least likely to collide. The second turned out to force a protocol change.
+
+### There was no window for the old scheme
+
+`hardware/gen/i2c_address_map.py` computes the occupied address map by parsing the driver
+sources — so it cannot drift from the code — then unions that with parts commonly found on
+a hobbyist bus and the ranges the I2C spec reserves. Result:
+
+```
+  16 consecutive: NO CLEAR WINDOW
+   9 consecutive: 0x0E-0x10
+   1 address:     dozens of choices
+```
+
+v2 needed sixteen consecutive addresses. There is no such window. Worse, the base in use,
+**`0x30`, collides outright with the MMC5983MA magnetometer**, and its span also covers an
+SSD1306 display and an APDS9960.
+
+Eight nodes would fit, in exactly one window three bases wide — one added display and it
+breaks. So this was forced rather than chosen: **protocol v3 puts the whole chain on one
+address**, `0x13`, six clear of the nearest occupied neighbour. Frames become a uniform
+three bytes: opcode, target, value. DEC-015.
+
+Costs ~25% more I2C time per sensor switch (90 µs vs 72 at 400 kHz), still a few percent
+of a poll cycle. Buys, besides the addresses: the dual-address TWI requirement disappears,
+which was the reason the node MCU list was short and the reason megaTinyCore's
+dual-address semantics were flagged unverified. Any plain I2C slave now qualifies.
+
+Not wire-compatible with v1/v2 and cannot be made so — an older node reads a v3 frame's
+target byte as its payload. The host refuses to drive a node reporting an older version
+rather than misdriving it.
+
+### I2C sensors: gated SCL, and the property that falls out
+
+`ATTinyCSWireInterface` arms a node in `swapIn()`; the node gates its sensor's SCL. Held
+**low** when unarmed, so the sensor cannot even detect a START — held high it would see
+STARTs it could not clock in, which is probably harmless but less certain. SCL rather than
+SDA because SDA is bidirectional and gating it would break ACK; SCL rather than power
+because cutting the rail loses the sensor's configuration on every deselect.
+
+The consequence is the good bit: **chained I2C sensors consume no bus addresses at all.**
+Six ICM-45686s all answering at `0x68` coexist, because only one can hear the clock.
+Identical parts on a shared bus is the thing I2C is worst at, and gating removes it.
+
+That is also why one address suffices for a whole chain — only the node controllers need
+to be addressable, and they now share one.
+
+New scenario proves it: four nodes each carrying a sensor at `0x68`, each reachable in
+turn, every write reaching exactly one sensor, nothing answering when disarmed. 44 checks
+now, up from 39.
+
+### Also
+
+- The sim's node model gained read arbitration and fails loudly if two nodes would answer
+  a read — the same class of fault as two chip selects on MISO, and just as invisible.
+- `i2c_address_map.py --check` is now the seventh suite in `VERIFY.sh`, and
+  `check_numbers.py` fails if the configured address drifts off the whitelist.
+- Node firmware collapsed to one dispatcher and `Wire.begin(BASE_ADDRESS)`. All six build
+  variants still compile; all four invalid ones still refused.
+
+### Unverified
+
+The gate's behaviour at an armed/disarmed transition mid-transaction. The host only
+re-arms between transactions so it should not arise, but it wants a scope on SCL at the
+sensor during a switch at bring-up.
+
+---
+
 ## 2026-09-02q — The magnetometer write path was issuing reads
 
 The datasheet settled the `writeAux()` FIXME left open several entries ago, and the

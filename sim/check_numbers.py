@@ -56,6 +56,8 @@ def source_constant(path, pattern, cast=int):
 PROTO = "src/sensorinterface/ATTinyCSProtocol.h"
 base_addr = source_constant(PROTO, r"DefaultBaseAddress = (0x[0-9A-Fa-f]+)",
                             lambda s: int(s, 16))
+addr_span = source_constant(PROTO, r"AddressSpan = (\d+)")
+frame_len = source_constant(PROTO, r"FrameLength = (\d+)")
 addr_min = source_constant(PROTO, r"AddressMin = (0x[0-9A-Fa-f]+)", lambda s: int(s, 16))
 addr_max = source_constant(PROTO, r"AddressMax = (0x[0-9A-Fa-f]+)", lambda s: int(s, 16))
 max_node = source_constant(PROTO, r"MaxNodeId = (\d+)")
@@ -103,14 +105,25 @@ print(f"  identity block {identity_len} bytes, power settle {settle_ms} ms")
 # ----------------------------------------------------------------- addressing
 
 print("\nAddressing")
-check("top unicast address", base_addr + max_node, 0x3F, 0, "")
-if base_addr + max_node > addr_max:
-    failures.append("node addresses run past AddressMax")
-    print("  [FAIL] node address range exceeds the usable I2C range")
-else:
-    checks += 1
-    print(f"  [ok] 0x{base_addr:02X}..0x{base_addr + max_node:02X} fits inside "
+check("addresses occupied by the whole chain", addr_span, 1, 0, "")
+checks += 1
+if addr_min <= base_addr <= addr_max:
+    print(f"  [ok] 0x{base_addr:02X} is inside the usable range "
           f"0x{addr_min:02X}..0x{addr_max:02X}")
+else:
+    failures.append("chain address outside the usable I2C range")
+
+# The address must be on the vetted whitelist, not merely free today.
+checks += 1
+wl = re.search(r"AddressWhitelist\[\] = \{([^}]*)\}",
+               (ROOT / PROTO).read_text()).group(1)
+whitelist = [int(x.strip(), 16) for x in wl.split(",") if x.strip()]
+if base_addr in whitelist:
+    print(f"  [ok] 0x{base_addr:02X} is on the vetted whitelist "
+          f"({len(whitelist)} entries)")
+else:
+    failures.append(f"chain address 0x{base_addr:02X} is not on the whitelist")
+    print(f"  [FAIL] 0x{base_addr:02X} is not on the whitelist")
 
 checks += 1
 packed_max = ((max_node & 0x0F) << 4) | ((max_chan - 1) & 0x0F)
@@ -124,13 +137,13 @@ check("max addressable sensors", max_node * max_chan, 240, 0, "")
 
 # --------------------------------------------------------------------- timing
 
-print("\nBus timing (ARM is 3 bytes: address, opcode, payload)")
-arm_400 = i2c_write_us(3, I2C_FAST_HZ)
-arm_1m = i2c_write_us(3, I2C_FASTPLUS_HZ)
+print(f"\nBus timing (v3 frame is {frame_len} bytes: opcode, target, value,\n        plus the address byte)")
+arm_400 = i2c_write_us(frame_len, I2C_FAST_HZ)
+arm_1m = i2c_write_us(frame_len, I2C_FASTPLUS_HZ)
 check("ARM write at 400 kHz", arm_400, 70, 0.10, " us")
 check("ARM write at 1 MHz", arm_1m, 30, 0.15, " us")
 
-softcs_400 = i2c_write_us(3, I2C_FAST_HZ) * 2
+softcs_400 = i2c_write_us(frame_len, I2C_FAST_HZ) * 2
 check("software CS assert+deassert at 400 kHz", softcs_400, 145, 0.05, " us")
 
 fifo_us = spi_transfer_us(FIFO_BURST_BYTES, SPI_HZ)

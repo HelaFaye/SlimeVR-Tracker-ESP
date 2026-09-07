@@ -29,6 +29,7 @@
 #include <string>
 
 #include "ATTinyCSProtocol.h"
+#include "SensorInterface.h"
 #include "logging/Logger.h"
 
 namespace SlimeVR {
@@ -88,8 +89,7 @@ public:
 	[[nodiscard]] std::string toString() const;
 
 private:
-	bool writeChain(ATTinyCS::ChainCommand command, uint8_t payload, bool hasPayload);
-	bool writeNode(uint8_t nodeId, ATTinyCS::NodeCommand command, uint8_t payload);
+	bool writeFrame(ATTinyCS::Command command, uint8_t target, uint8_t value);
 	void swapIn();
 
 	uint8_t m_sclPin;
@@ -108,6 +108,51 @@ private:
 	bool m_addressValid = false;
 
 	Logging::Logger m_Logger = Logging::Logger("ATTinyCS");
+};
+
+/**
+ * Looks like an ordinary chip-select pin to SPIImpl, but the pin lives on a remote
+ * ATtiny.
+ */
+/**
+ * A chain node hosting an **I2C** sensor rather than an SPI one.
+ *
+ * The node gates its sensor's SCL: unarmed, the sensor sees SCL held low and cannot
+ * even detect a START, so it is electrically absent from the bus. Arming passes SCL
+ * through.
+ *
+ * The consequence worth understanding: chained I2C sensors do **not** consume bus
+ * addresses. Six ICM-45686s all answering at 0x68 coexist happily, because only one is
+ * listening at a time. Address collisions between chained sensors are impossible by
+ * construction, and only the node controller's own address has to be unique - which is
+ * why one whitelisted address is enough for the whole chain. See DEC-016.
+ */
+class ATTinyCSWireInterface : public SensorInterface {
+public:
+	ATTinyCSWireInterface(
+		ATTinyCSBus* bus,
+		uint8_t nodeId,
+		uint8_t channel = ATTinyCS::DefaultChannel
+	)
+		: m_bus(bus)
+		, m_nodeId(nodeId)
+		, m_channel(channel) {}
+
+	bool init() final;
+	void swapIn() final;
+
+	[[nodiscard]] std::string toString() const final {
+		using namespace std::string_literals;
+		return "I2SPIWire(node "s + std::to_string(m_nodeId) + ", ch "
+			 + std::to_string(m_channel) + ")";
+	}
+
+	[[nodiscard]] bool isNodePresent() const;
+
+private:
+	ATTinyCSBus* m_bus;
+	uint8_t m_nodeId;
+	uint8_t m_channel;
 };
 
 /**

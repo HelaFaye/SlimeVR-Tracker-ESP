@@ -437,3 +437,82 @@ for the eight-extension build, once, at startup.
 `init()`, that all present nodes come up, that never more than one is ramping at a time,
 that an absent node costs no settle delay, and that an unpowered sensor floats MISO rather
 than returning plausible data.
+
+---
+
+## DEC-015 — Protocol v3: one address for the whole chain
+
+**Decision.** All nodes listen on a single I2C address. Every frame is three bytes —
+opcode, target, value — and reads are answered by whichever node the last `Identify`
+selected. The per-node unicast addresses of v1/v2 are gone.
+
+**Why, and this one was forced rather than chosen.** v2 needed `base` through
+`base + 15`: sixteen consecutive free addresses. `hardware/gen/i2c_address_map.py`
+computes the occupied map from the driver sources plus the parts commonly found on a
+hobbyist I2C bus, and the answer is stark:
+
+```
+  16 consecutive: NO CLEAR WINDOW
+   9 consecutive: 0x0E-0x10        (one window, three bases)
+   5 consecutive: 0x08, 0x0E-0x14, 0x2A-0x2B, 0x31-0x34, 0x5B
+   1 address:     dozens of choices
+```
+
+There is no way to place a 16-address block on a bus that also carries the sensors this
+firmware supports. The base we had been using, `0x30`, collides outright with the
+MMC5983MA magnetometer, and its span also covers an SSD1306 display and an APDS9960.
+
+Reducing to 8 nodes would fit, in exactly one window, three addresses wide — one added
+display and it breaks. Collapsing to a single address is not a squeeze, it is the shape
+the problem actually has.
+
+**What it costs.** Frames grow from 2 bytes to 3, so an `ARM` is ~90 µs at 400 kHz rather
+than ~72. That is the hot path, so it is a real cost — about 25% more I2C time per sensor
+switch, still a few percent of a poll cycle.
+
+**What it buys, beyond the addresses.** The dual-address TWI requirement disappears. That
+requirement was the reason the node MCU list was short, and the reason megaTinyCore's
+`Wire.begin(addr, broadcast, second_address)` semantics were flagged as unverified. Any
+part with a plain I2C slave now qualifies — CH32V003, PY32, STM32C0 — which is exactly the
+widening `HARDWARE-RJ45-SPI-BUS.md` said would matter if part supply got awkward.
+
+**Not wire-compatible with v1/v2**, and it cannot be made so: a v2 node reads a v3 frame's
+target byte as its payload and acts on garbage. The host refuses to drive a node reporting
+an older version rather than misdriving it.
+
+---
+
+## DEC-016 — I2C sensors on the chain, isolated by gated SCL
+
+**Decision.** A node may carry an I2C sensor instead of (or as well as) an SPI one. The
+node gates that sensor's SCL: unarmed, the sensor sees SCL held low; armed, SCL passes
+through. `ATTinyCSWireInterface` arms the node in `swapIn()` and the caller then does
+ordinary `Wire` traffic.
+
+**Why gate SCL rather than power or SDA.**
+
+- *Gate low, not high.* An I2C slave detects START as SDA falling while SCL is high. With
+  SCL held **low** the slave cannot see a START at all, so it is electrically absent. Held
+  high it would see STARTs it could not clock in — probably harmless, definitely less
+  certain.
+- *Not SDA.* SDA is bidirectional and open-drain; gating it needs an analogue switch and
+  breaks the ACK path. SCL is unidirectional from the host, so a logic gate suffices — the
+  same gate the CS strobe already uses.
+- *Not power.* Cutting the rail works but loses the sensor's configuration every time it
+  is deselected, which for an IMU means re-running setup at every poll.
+
+**The property this buys.** Chained I2C sensors do not consume bus addresses at all. Six
+ICM-45686s, every one of them answering at `0x68`, coexist without collision because only
+one can hear the clock. Identical sensors on a shared bus is the thing I2C is worst at,
+and gating removes it entirely.
+
+That is also why one whitelisted address suffices for a whole chain: only the node
+*controllers* need to be addressable, and they all share one address (DEC-015).
+
+**Verified in simulation**, not on hardware: four nodes all carrying a sensor at `0x68`,
+each reachable in turn, every write reaching exactly one sensor, and nothing answering at
+all when the chain is disarmed.
+
+**Unverified:** the gate's behaviour at an armed/disarmed transition mid-transaction. The
+host only re-arms between transactions, so it should not arise, but a scope on SCL at the
+sensor during a switch is worth doing at bring-up.

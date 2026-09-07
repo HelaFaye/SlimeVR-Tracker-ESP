@@ -53,6 +53,7 @@ fi
 
 run "KiCad symbols and footprints" bash -c 'cd hardware/gen && python3 verify.py'
 run "Symbol pin-order guard" python3 hardware/gen/test_pin_order.py
+run "I2C address collisions" python3 hardware/gen/i2c_address_map.py --check
 
 run "Board config generation" python3 -c '
 import json, types

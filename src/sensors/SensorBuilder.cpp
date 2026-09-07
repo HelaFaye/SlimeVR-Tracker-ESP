@@ -103,6 +103,33 @@ uint8_t SensorBuilder::buildAllSensors() {
 	[[maybe_unused]] const auto ATTINY_CS = [&](uint8_t nodeId) {
 		return ATTINY_CS_CH(nodeId, SlimeVR::ATTinyCS::DefaultChannel);
 	};
+	// An I2C sensor on a chain node. The node gates its sensor's SCL, so several nodes
+	// may carry identical parts at identical addresses.
+	[[maybe_unused]] const auto I2SPI_WIRE_ON = [&](uint8_t scl,
+													uint8_t sda,
+													uint8_t baseAddr,
+													int8_t strobe,
+													uint8_t nodeId,
+													uint8_t channel) {
+		return interfaceManager.attinyCSWireInterface().get(
+			interfaceManager.attinyCSBus().get(scl, sda, baseAddr, strobe),
+			nodeId,
+			channel
+		);
+	};
+	[[maybe_unused]] const auto I2SPI_WIRE_CH = [&](uint8_t nodeId, uint8_t channel) {
+		return I2SPI_WIRE_ON(
+			REMOTE_CS_SCL,
+			REMOTE_CS_SDA,
+			REMOTE_CS_BASE_ADDR,
+			REMOTE_CS_STROBE,
+			nodeId,
+			channel
+		);
+	};
+	[[maybe_unused]] const auto I2SPI_WIRE = [&](uint8_t nodeId) {
+		return I2SPI_WIRE_CH(nodeId, SlimeVR::ATTinyCS::DefaultChannel);
+	};
 
 	// Apply descriptor list and expand to entries
 	SENSOR_DESC_LIST

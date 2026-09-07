@@ -34,9 +34,22 @@
 
 namespace SlimeVR::ATTinyCS {
 
-/// Nodes listen on BaseAddress (shared, for one-hot arm) and BaseAddress + nodeId
-/// (unicast, for identify and configuration). Node id 0 means "nothing armed".
-constexpr uint8_t DefaultBaseAddress = 0x30;
+/// Every node listens on this **one** address. Commands carry their target in the
+/// frame, and reads are answered by whichever node the last Identify selected -
+/// one-hot, by the same broadcast mechanism as arming.
+///
+/// Protocol v2 used a shared address plus one unicast address per node, which needed 16
+/// consecutive free addresses. There is no such window on a bus that also carries the
+/// sensors this firmware supports: see hardware/gen/i2c_address_map.py, which computes
+/// the map from the driver sources. v3 needs one address, and the whitelist below has
+/// plenty. See docs/dev/DECISIONS.md DEC-015.
+constexpr uint8_t DefaultBaseAddress = 0x13;
+constexpr uint8_t AddressSpan = 1;
+
+/// Vetted alternatives, ranked by distance from the nearest address any supported or
+/// common part uses. Regenerate with `python3 hardware/gen/i2c_address_map.py`; the
+/// checker in sim/check_numbers.py fails if DefaultBaseAddress drifts off this list.
+constexpr uint8_t AddressWhitelist[] = {0x13, 0x12, 0x14, 0x11, 0x15, 0x34, 0x35};
 
 /// 0x00-0x07 and 0x78-0x7F are reserved by the I2C specification.
 constexpr uint8_t AddressMin = 0x08;
@@ -46,39 +59,33 @@ constexpr uint8_t MinNodeId = 1;
 constexpr uint8_t MaxNodeId = 15;
 constexpr uint8_t NoNode = 0;
 
-/// A node may own more than one chip select. The channel rides in the low nibble
-/// alongside the node id, so one node can serve a cluster of sensors.
+/// A node may own more than one chip select, or more than one gated I2C sensor. The
+/// channel rides in the low nibble alongside the node id.
 constexpr uint8_t MaxChannels = 16;
 constexpr uint8_t DefaultChannel = 0;
 
-/// Node id in the high nibble, channel in the low nibble. Used by Arm and SetCs.
+/// Node id in the high nibble, channel in the low nibble.
 constexpr uint8_t packTarget(uint8_t nodeId, uint8_t channel) {
 	return static_cast<uint8_t>((nodeId & 0x0F) << 4 | (channel & 0x0F));
 }
 constexpr uint8_t unpackNodeId(uint8_t target) { return (target >> 4) & 0x0F; }
 constexpr uint8_t unpackChannel(uint8_t target) { return target & 0x0F; }
 
-/// Written to the shared chain address.
-enum class ChainCommand : uint8_t {
-	Arm = 0x01,  ///< payload: packTarget(nodeId, channel). One-hot; all others disarm.
-	DisarmAll = 0x02,  ///< equivalent to Arm(0)
-	PowerAll = 0x03,  ///< payload: 0 off, 1 on. Every node gates its sensor at once.
+/// Every frame is exactly three bytes: opcode, target, value. Uniform because there is
+/// only one address now, so the node can no longer infer anything from being addressed.
+constexpr uint8_t FrameLength = 3;
+
+enum class Command : uint8_t {
+	Arm = 0x01,  ///< value ignored. Target's chip select follows the strobe.
+	DisarmAll = 0x02,  ///< target and value ignored
+	PowerAll = 0x03,  ///< value: 0 off, 1 on. Every node gates its sensor.
+	SetCs = 0x10,  ///< value: 0 assert (low), 1 deassert. Software-CS mode only.
+	SetMode = 0x11,  ///< value: 0 software CS, 1 strobe
+	SetSensorPower = 0x12,  ///< value: 0 off, 1 on. Drives the VCC pass MOSFET.
+	SetSensorReset = 0x13,  ///< value: 0 release, 1 hold. Cuts the rail.
+	Identify = 0x20,  ///< target answers the next read with its identity block
 	ResetAll = 0x7F,  ///< back to power-on state
 };
-
-/// Written to a node's unicast address.
-enum class NodeCommand : uint8_t {
-	SetCs = 0x10,  ///< payload: (channel << 4) | level. Software-CS mode only.
-	SetMode = 0x11,  ///< payload: 0 software CS, 1 strobe (CCL or external gate)
-	SetSensorPower = 0x12,  ///< payload: 0 off, 1 on. Drives the VCC pass MOSFET.
-	SetSensorReset = 0x13,  ///< payload: 0 release, 1 hold. Optional hardware.
-	Identify = 0x20,  ///< no payload; next read returns the identity block
-};
-
-/// Payload encoding for SetCs.
-constexpr uint8_t packSetCs(uint8_t channel, uint8_t level) {
-	return static_cast<uint8_t>((channel & 0x0F) << 4 | (level != 0 ? 1 : 0));
-}
 
 enum class CsMode : uint8_t {
 	Software = 0,
@@ -89,9 +96,10 @@ enum class CsMode : uint8_t {
 /// whatever else happens to answer at that address.
 constexpr uint8_t IdentityMagic = 0x5C;
 
-/// v2 added the node id / channel packing to Arm and SetCs. A v1 node ignores the
-/// channel nibble, so it behaves correctly as a single-channel node.
-constexpr uint8_t ProtocolVersion = 0x02;
+/// v3 collapsed the two addresses into one and made every frame three bytes. It is NOT
+/// wire-compatible with v1 or v2; the host refuses to drive a node reporting an older
+/// version, because a v2 node would decode a v3 frame's target byte as its payload.
+constexpr uint8_t ProtocolVersion = 0x03;
 constexpr uint8_t IdentityLength = 4;
 
 /// Bits in byte 3 of the identity block.
