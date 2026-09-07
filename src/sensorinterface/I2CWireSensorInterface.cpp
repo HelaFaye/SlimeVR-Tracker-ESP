@@ -43,7 +43,9 @@ void swapI2C(uint8_t sclPin, uint8_t sdaPin) {
 			Wire.end();
 		}
 
-		if (activeSCLPin && activeSCLPin) {
+		// Was `activeSCLPin && activeSCLPin`: with SCL set and SDA unset, the
+		// dereference of activeSDAPin below hit an empty optional.
+		if (activeSCLPin && activeSDAPin) {
 			// Disconnect pins from HWI2C
 			gpio_set_direction((gpio_num_t)*activeSCLPin, GPIO_MODE_INPUT);
 			gpio_set_direction((gpio_num_t)*activeSDAPin, GPIO_MODE_INPUT);
