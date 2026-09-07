@@ -28,9 +28,15 @@ bool byteCompare(const T& lhs, const T& rhs) {
 	const auto* lhsBytes = reinterpret_cast<const uint8_t*>(&lhs);
 	const auto* rhsBytes = reinterpret_cast<const uint8_t*>(&rhs);
 
+	// Lexicographic. This returned true on the first byte where lhs was smaller but
+	// continued when it was larger, so for a = {5, 0} and b = {3, 9} both
+	// byteCompare(a, b) and byteCompare(b, a) were true. That is not a strict weak
+	// ordering, and std::map keyed on such a comparator has undefined behaviour: a
+	// lookup that should hit can miss and construct a duplicate interface, calling
+	// begin() on a bus that is already up.
 	for (size_t i = 0; i < sizeof(T); i++) {
-		if (lhsBytes[i] < rhsBytes[i]) {
-			return true;
+		if (lhsBytes[i] != rhsBytes[i]) {
+			return lhsBytes[i] < rhsBytes[i];
 		}
 	}
 
