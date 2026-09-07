@@ -736,10 +736,8 @@
 					"mode": "SPI_MODE3"
 				},
 				"REMOTE_CS": {
-					"scl": "4",
-					"sda": "5",
-					"strobe": "6",
-					"baseAddress": 48
+					"legs": { "scl": "4", "sda": "5", "strobe": "6", "baseAddress": 19 },
+					"arms": { "scl": "4", "sda": "5", "strobe": "15", "baseAddress": 18 }
 				},
 				"SENSORS": [
 					{
@@ -753,13 +751,13 @@
 						"protocol": "SPI",
 						"imu": "IMU_ICM45686",
 						"rotation": "DEG_0",
-						"cs": { "type": "attiny", "node": 1 }
+						"cs": { "type": "attiny", "node": 1, "chain": "legs" }
 					},
 					{
 						"protocol": "SPI",
 						"imu": "IMU_ICM45686",
 						"rotation": "DEG_0",
-						"cs": { "type": "attiny", "node": 2 }
+						"cs": { "type": "attiny", "node": 2, "chain": "arms" }
 					}
 				],
 				"BATTERY": {

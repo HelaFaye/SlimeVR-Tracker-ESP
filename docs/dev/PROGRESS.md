@@ -4,6 +4,58 @@ Newest first. Each entry says what changed, what was verified, and what is still
 
 ---
 
+## 2026-09-02s — Flexibility audit. Three gaps, two of them mine.
+
+"Is it as flexible as it can be" is easy to answer optimistically, so I checked instead.
+`docs/dev/FLEXIBILITY.md` has the full matrix. Three things were wrong.
+
+### The node firmware could not do what the host was asking
+
+`ATTinyCSWireInterface` shipped last entry, with a simulation scenario proving four
+identical-address I2C sensors coexist. Nothing in `extras/attiny-cs-node` implemented the
+SCL gating both depend on. The feature was half-built and the tests were green.
+
+Fixed: an `I2C_CHANNELS` bitmask marks which channels gate a clock rather than a chip
+select. The logic is identical; only the idle level and the external gate differ, because
+the buses idle at opposite levels — `CS = STROBE OR ARMED_N` (74LVC1G32, idles high) versus
+`SCL = CHAIN_SCL AND ARMED` (74LVC1G08, idles low). Two new compile variants cover an
+I2C-only node and a mixed node; a fifth invalid config (SCL gating without the gate) is
+now correctly refused.
+
+**Why nothing caught it, which matters more than the bug.** The simulation models the
+*protocol*, not the firmware. Its node model is an independent implementation of the spec,
+which is exactly what catches a host and a node disagreeing about the wire format — and
+exactly why it cannot catch the firmware not implementing part of the spec. The model
+implements the spec correctly by construction. That limit is now written into
+`sim/README.md` and the flexibility doc.
+
+### A board could only declare one chain and one SPI bus
+
+The interfaces always supported several — the bus cache is keyed on
+`(scl, sda, base, strobe)` — but the generator emitted a single `REMOTE_CS_*` set, so board
+JSON could not reach it. `SPI` and `REMOTE_CS` now take either a single object or a map of
+named ones, with sensors selecting via `"bus"` and `"chain"`. The single-object form is
+untouched, so no existing board moved. I2C sensors can also name a chain, which routes
+them through `I2SPI_WIRE_ON`.
+
+### And the two-chain example I had just written was wrong
+
+Both chains had address `0x13`. Every node on both chains hears every frame, so an `ARM`
+meant for the legs also arms the matching node id on the arms. Differing strobes keep chip
+selects safe, but a gated I2C sensor on the unintended chain would ungate and answer — a
+silent wrong-sensor read.
+
+Fixed to `0x13` and `0x12`, and the generator now refuses the configuration, because there
+is no runtime symptom to catch it by. Seven whitelist entries means seven chains per I2C
+bus; beyond that needs different pins or a chain id in the frame.
+
+### Still deliberately inflexible
+
+Compile-time node ids, one gated signal per channel, no bulk transfer through a node, and
+the fixed 8-conductor pinout. Reasons in the doc.
+
+---
+
 ## 2026-09-02r — I2C sensors on the chain, and the address problem that forced protocol v3
 
 Asked for two things: I2C sensors on the chain alongside SPI ones, and an address

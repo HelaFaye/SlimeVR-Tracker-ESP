@@ -83,6 +83,10 @@
 					"$ref": "#/$defs/IMU_ROTATION",
 					"description": "IMU Rotation"
 				},
+				"bus": {
+					"type": "string",
+					"description": "Named SPI bus. Omit when there is only one"
+				},
 				"cs": {
 					"description": "Chip select: a host pin, or a remote ATtiny node",
 					"oneOf": [
@@ -121,6 +125,10 @@
 					"minimum": 0,
 					"maximum": 15,
 					"description": "Which chip select on that node. Defaults to 0"
+				},
+				"chain": {
+					"type": "string",
+					"description": "Named chain from REMOTE_CS. Omit when there is only one"
 				}
 			},
 			"required": ["type", "node"]
@@ -258,8 +266,20 @@
 					"maxItems": 16,
 					"description": "Sensors List. A glove needs 16 (15 finger bones plus the back of the hand); body trackers need far fewer"
 				},
-				"SPI": { "$ref": "#/$defs/SPI_BUS" },
-				"REMOTE_CS": { "$ref": "#/$defs/REMOTE_CS" },
+				"SPI": {
+					"description": "One bus, or a map of named buses that sensors select with \"bus\"",
+					"oneOf": [
+						{ "$ref": "#/$defs/SPI_BUS" },
+						{ "type": "object", "additionalProperties": { "$ref": "#/$defs/SPI_BUS" } }
+					]
+				},
+				"REMOTE_CS": {
+					"description": "One chain, or a map of named chains that sensors select with \"chain\"",
+					"oneOf": [
+						{ "$ref": "#/$defs/REMOTE_CS" },
+						{ "type": "object", "additionalProperties": { "$ref": "#/$defs/REMOTE_CS" } }
+					]
+				},
 				"LED": {
 					"type": "object",
 					"description": "Led Settings",

@@ -29,6 +29,17 @@ Because the node model implements the protocol header independently, a host/node
 disagreement about the wire format shows up here rather than on the bench — which is the
 failure that cost the most time in this project so far.
 
+## The limit worth knowing
+
+The node model is an **independent implementation of the protocol**, which is what makes
+it catch a host and a node disagreeing about the wire format. It is not the firmware. It
+cannot catch the firmware failing to implement part of the spec, because the model
+implements the spec correctly by construction — that is how SCL gating shipped on the host
+with green tests and no node-side implementation at all.
+
+For firmware coverage, `extras/attiny-cs-node/test/compile-check.sh` builds every variant,
+and hardware is hardware.
+
 ## What it does not model
 
 Timing, signal integrity, cable capacitance, CCL propagation delay, the ATtiny's TWI

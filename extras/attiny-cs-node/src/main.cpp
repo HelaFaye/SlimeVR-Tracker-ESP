@@ -83,6 +83,28 @@ using namespace SlimeVR::ATTinyCS;
 #error "NUM_CHANNELS must be between 1 and 16"
 #endif
 
+// Which channels gate a sensor's SCL rather than its chip select, as a bitmask.
+// Bit n set = channel n carries an I2C sensor.
+//
+// The gating logic is identical either way; only the idle level and the external gate
+// differ, because the two buses idle at opposite levels:
+//
+//   SPI chip select  idles HIGH  ->  CS  = CS_STROBE OR ARMED_N   (74LVC1G32)
+//   I2C clock        idles LOW   ->  SCL = CHAIN_SCL AND ARMED    (74LVC1G08)
+//
+// Gating SCL low is deliberate: an I2C slave detects START as SDA falling while SCL is
+// high, so a sensor whose clock is held low cannot see a START at all and is
+// electrically absent from the bus. See docs/dev/DECISIONS.md DEC-016.
+#ifndef I2C_CHANNELS
+#define I2C_CHANNELS 0
+#endif
+
+#if I2C_CHANNELS != 0 && !defined(EXTERNAL_CS_GATE)
+#error "I2C_CHANNELS requires -DEXTERNAL_CS_GATE (an AND gate per I2C channel)"
+#endif
+
+constexpr bool channelIsI2C(uint8_t channel) { return (I2C_CHANNELS >> channel) & 1; }
+
 #ifndef BASE_ADDRESS
 #define BASE_ADDRESS 0x13
 #endif
@@ -178,6 +200,18 @@ void updateIdentity() {
 #endif
 constexpr uint8_t ChannelPins[NUM_CHANNELS] = ARMED_N_PINS;
 
+/// The level that leaves a channel's sensor deselected.
+constexpr uint8_t idleLevel(uint8_t channel) {
+	// ARMED_N feeds an OR gate for chip select (idle high = CS forced high); ARMED
+	// feeds an AND gate for I2C (idle low = clock held low).
+	return channelIsI2C(channel) ? LOW : HIGH;
+}
+
+/// The level that lets a channel's sensor through.
+constexpr uint8_t activeLevel(uint8_t channel) {
+	return channelIsI2C(channel) ? HIGH : LOW;
+}
+
 void writeChannel(uint8_t channel, uint8_t level) {
 	if (channel < NUM_CHANNELS) {
 		nodeWrite(ChannelPins[channel], level);
@@ -193,7 +227,10 @@ void applyArmedState() {
 	// Armed pulls ARMED_N low so the gate lets the strobe through; disarmed forces CS
 	// high. In software mode the host parks the strobe low, so this same line is CS.
 	for (uint8_t i = 0; i < NUM_CHANNELS; i++) {
-		nodeWrite(ChannelPins[i], (armed && i == armedChannel) ? LOW : HIGH);
+		nodeWrite(
+			ChannelPins[i],
+			(armed && i == armedChannel) ? activeLevel(i) : idleLevel(i)
+		);
 	}
 }
 
@@ -287,7 +324,9 @@ void handleFrame(uint8_t opcode, uint8_t target, uint8_t value) {
 			// Refuse a channel we are not armed on, so a stale frame cannot drive a
 			// chip select out from under the host.
 			const uint8_t channel = unpackChannel(target);
-			if (channel != armedChannel) {
+			if (channel != armedChannel || channelIsI2C(channel)) {
+				// An I2C channel has no software-CS analogue: its clock either passes
+				// or it does not, and that is what arming already controls.
 				return;
 			}
 			writeChannel(channel, value ? HIGH : LOW);
@@ -365,8 +404,11 @@ void setup() {
 	// whatever the host is already talking to.
 #ifdef EXTERNAL_CS_GATE
 	for (uint8_t i = 0; i < NUM_CHANNELS; i++) {
+		// Idle before the pin becomes an output, so there is no glimpse of a selected
+		// sensor while the port direction changes.
+		nodeWrite(ChannelPins[i], idleLevel(i));
 		pinMode(ChannelPins[i], OUTPUT);
-		nodeWrite(ChannelPins[i], HIGH);
+		nodeWrite(ChannelPins[i], idleLevel(i));
 	}
 #else
 	pinMode(PinChipSelect, OUTPUT);
