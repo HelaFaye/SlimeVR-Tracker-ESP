@@ -46,7 +46,7 @@ namespace SlimeVR {
  * If no strobe pin is configured the bus falls back to driving CS over I2C, which is
  * roughly a thousand times slower per transaction and is meant for bring-up only.
  *
- * See docs/dev/ATTINY-CS-PROTOCOL.md and DECISIONS.md DEC-004/DEC-007/DEC-011.
+ * See docs/I2SPI.md and DECISIONS.md DEC-004/DEC-007/DEC-011.
  */
 class ATTinyCSBus {
 public:
@@ -86,11 +86,15 @@ public:
 
 	void disarmAll();
 
+	/// Attach Wire to this chain's pins. Cheap when it already is. Anything that talks
+	/// to the chain without going through writeFrame() - a gated I2C sensor - has to
+	/// call this itself, because select() skips the bus entirely when already armed.
+	void swapIn();
+
 	[[nodiscard]] std::string toString() const;
 
 private:
 	bool writeFrame(ATTinyCS::Command command, uint8_t target, uint8_t value);
-	void swapIn();
 
 	uint8_t m_sclPin;
 	uint8_t m_sdaPin;
@@ -110,10 +114,6 @@ private:
 	Logging::Logger m_Logger = Logging::Logger("ATTinyCS");
 };
 
-/**
- * Looks like an ordinary chip-select pin to SPIImpl, but the pin lives on a remote
- * ATtiny.
- */
 /**
  * A chain node hosting an **I2C** sensor rather than an SPI one.
  *

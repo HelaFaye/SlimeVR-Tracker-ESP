@@ -23,7 +23,7 @@ VALID=(
   "-DNODE_ID=1 -DNO_DIGITAL_WRITE_FAST"
   # Braces quoted: unquoted, bash expands {1,2,3} into three separate words.
   "-DNODE_ID=3 -DEXTERNAL_CS_GATE -DNUM_CHANNELS=3 -DARMED_N_PINS={1,2,3}"
-  "-DNODE_ID=1 -DBASE_ADDRESS=0x40"
+  "-DNODE_ID=1 -DBASE_ADDRESS=0x12"
   # An I2C sensor on channel 0, gated SCL.
   "-DNODE_ID=2 -DEXTERNAL_CS_GATE -DI2C_CHANNELS=0b1"
   # Mixed node: channel 0 an SPI chip select, channel 1 an I2C sensor.

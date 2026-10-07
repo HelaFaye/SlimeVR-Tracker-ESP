@@ -3,7 +3,7 @@
 A worked end-to-end example of the RJ45 chain design: five battery-powered hub trackers,
 each carrying its own IMU and hosting one or two remote extensions over flat RJ45.
 
-Protocol reference: `ATTINY-CS-PROTOCOL.md`. Cable and electrical limits:
+Protocol reference: `../I2SPI.md`. Cable and electrical limits:
 `HARDWARE-RJ45-SPI-BUS.md`. Board specifications: [`docs/BOARD-SPECS.md`](https://github.com/HelaFaye/SlimeVR-Tracker-ESP-Hardware/blob/main/docs/BOARD-SPECS.md) in the hardware repo.
 
 ---
@@ -171,18 +171,22 @@ Generated flags:
 
 ```
 -DMAX_SENSORS_COUNT=3
--DREMOTE_CS_SCL=4 -DREMOTE_CS_SDA=5 -DREMOTE_CS_BASE_ADDR=48 -DREMOTE_CS_STROBE=6
+-DREMOTE_CS_SCL=4 -DREMOTE_CS_SDA=5 -DREMOTE_CS_BASE_ADDR=19 -DREMOTE_CS_STROBE=6
 -DSENSOR_DESC_LIST='
-  SENSOR_DESC_ENTRY(IMU_ICM45686, DIRECT_PIN(3), DEG_0, SPI_BUS(4000000,MSBFIRST,SPI_MODE3,10,11,12), false, DIRECT_PIN(9), 0)
-  SENSOR_DESC_ENTRY(IMU_ICM45686, ATTINY_CS(1),  DEG_0, SPI_BUS(4000000,MSBFIRST,SPI_MODE3,10,11,12), true,  DIRECT_PIN(255), 0)
-  SENSOR_DESC_ENTRY(IMU_ICM45686, ATTINY_CS(2),  DEG_0, SPI_BUS(4000000,MSBFIRST,SPI_MODE3,10,11,12), true,  DIRECT_PIN(255), 0)'
+  SENSOR_DESC_ENTRY(IMU_ICM45686, DIRECT_PIN(0), DEG_0, SPI_BUS(4000000,MSBFIRST,SPI_MODE3,10,9,8), false, DIRECT_PIN(24), 0)
+  SENSOR_DESC_ENTRY(IMU_ICM45686, ATTINY_CS(1),  DEG_0, SPI_BUS(4000000,MSBFIRST,SPI_MODE3,10,9,8), true,  DIRECT_PIN(255), 0)
+  SENSOR_DESC_ENTRY(IMU_ICM45686, ATTINY_CS(2),  DEG_0, SPI_BUS(4000000,MSBFIRST,SPI_MODE3,10,9,8), true,  DIRECT_PIN(255), 0)'
 ```
 
 Note the local IMU and the remote ones share **one SPI bus**. The local sensor's chip
 select is an ordinary GPIO; the remote ones are I2SPI. `SPIImpl` cannot tell the
 difference, which is the whole point of routing remote CS through `PinInterface`.
 
-**Two node images**, `node1` and `node2`, from `extras/attiny-cs-node/`.
+Both extensions sit on the hub's **one** chain: one RJ45 jack, one strobe (GPIO 6), one
+address (`0x13`, which is 19 in the flags). Node ids, not separate chains, tell them apart.
+
+**Two node images**, `node1` and `node2`, from `extras/attiny-cs-node/`, built with the
+default address — do not pass `-DBASE_ADDRESS`.
 
 **Total: three images across thirteen boards.**
 
@@ -192,11 +196,11 @@ difference, which is the whole point of routing remote CS through `PinInterface`
 
 Per hub, one poll cycle over three sensors:
 
-1. **Local IMU.** `ATTinyCSBus` is not involved. GPIO 3 goes low, FIFO burst, high.
+1. **Local IMU.** `ATTinyCSBus` is not involved. GPIO 0 goes low, FIFO burst, high.
    But note: the previously armed node is still armed, and the shared strobe is idle
    high, so no remote CS is asserted. The local and remote sensors coexist on the bus
    because only one chip select is ever low.
-2. **Node 1.** `select(1, 0)` — one 3-byte I2C write to `0x30`, about 70 µs at 400 kHz.
+2. **Node 1.** `select(1, 0)` — one 3-byte I2C write to `0x13`, about 70 µs at 400 kHz.
    Node 1 enables its gating; every other node forces CS high. Then each SPI transaction
    is framed by toggling GPIO 6.
 3. **Node 2.** Same, one more arm write.

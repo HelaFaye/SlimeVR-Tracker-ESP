@@ -175,6 +175,12 @@ uint8_t Chain::i2cEnd() {
 		return 4;  // NACK
 	}
 
+	if (!onChainBus()) {
+		// Wire is attached to some other pin pair. Nothing on the chain hears this.
+		stats.offChainI2C++;
+		return 2;  // NACK on address
+	}
+
 	if (txAddress != baseAddress) {
 		// Traffic aimed at a chained I2C sensor. Only nodes whose SCL is ungated can
 		// hear it, so identical addresses on different nodes never collide.
@@ -204,6 +210,10 @@ uint8_t Chain::i2cEnd() {
 
 uint8_t Chain::i2cRequest(uint8_t addr, uint8_t len) {
 	rxBuffer.clear();
+	if (!onChainBus()) {
+		stats.offChainI2C++;
+		return 0;
+	}
 	if (addr != baseAddress) {
 		return 0;
 	}
@@ -352,5 +362,8 @@ void delay(unsigned ms) {
 }
 
 namespace SlimeVR {
-void swapI2C(uint8_t, uint8_t) {}
+void swapI2C(uint8_t sclPin, uint8_t sdaPin) {
+	sim::g_chain.activeScl = sclPin;
+	sim::g_chain.activeSda = sdaPin;
+}
 }  // namespace SlimeVR

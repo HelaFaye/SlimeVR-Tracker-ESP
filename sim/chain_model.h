@@ -64,6 +64,7 @@ struct Stats {
 	int maxSimultaneousPowerUps = 0;
 	int i2cBytes = 0;
 	int i2cFailures = 0;
+	int offChainI2C = 0;  ///< transactions issued while Wire was on another bus
 	int spiBytes = 0;
 	int strobeToggles = 0;
 	unsigned delayMicros = 0;
@@ -75,6 +76,14 @@ struct Stats {
 struct Chain {
 	uint8_t baseAddress = SlimeVR::ATTinyCS::DefaultBaseAddress;
 	int strobePin = 6;
+
+	/// The chain's I2C pins, and the pins Wire is currently attached to. Traffic only
+	/// reaches the chain while the two match; anything else goes to some other bus.
+	int sclPin = 4;
+	int sdaPin = 5;
+	int activeScl = -1;
+	int activeSda = -1;
+	bool onChainBus() const { return activeScl == sclPin && activeSda == sdaPin; }
 	int localCsPin = -1;
 
 	int strobe = 1;  // HIGH

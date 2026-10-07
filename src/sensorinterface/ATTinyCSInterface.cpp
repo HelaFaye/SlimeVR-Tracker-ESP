@@ -48,8 +48,8 @@ void ATTinyCSBus::swapIn() {
 }
 
 bool ATTinyCSBus::init() {
-	// The unicast addresses run from base+1 to base+MaxNodeId, so both ends of that
-	// range have to stay inside the addresses the I2C spec leaves to us.
+	// The whole chain shares this one address, so it has to be one the I2C spec leaves
+	// to us.
 	m_addressValid = m_baseAddress >= AddressMin && m_baseAddress <= AddressMax;
 
 	if (!m_addressValid) {
@@ -217,8 +217,10 @@ bool ATTinyCSBus::probe(uint8_t nodeId) {
 
 	if (magic != IdentityMagic) {
 		m_Logger.warn(
-			"Device at 0x%02X is not an ATtiny CS node (magic 0x%02X)",
-			m_baseAddress + nodeId,
+			"Device at 0x%02X answering for node %d is not an ATtiny CS node "
+			"(magic 0x%02X)",
+			m_baseAddress,
+			nodeId,
 			magic
 		);
 		return false;
@@ -319,6 +321,12 @@ bool ATTinyCSWireInterface::init() {
 }
 
 void ATTinyCSWireInterface::swapIn() {
+	// The sensor's own traffic goes out on the chain's pins, so Wire has to be there
+	// even when select() has nothing to do. select() skips the bus entirely when this
+	// target is already armed, and a local I2C sensor polled in between will have moved
+	// Wire to its own pins - leaving this sensor's reads on the wrong bus.
+	m_bus->swapIn();
+
 	// Arming ungates this node's sensor SCL and gates every other node's. From here the
 	// caller does ordinary Wire traffic; the sensor's own address is irrelevant to
 	// anyone else on the chain because nobody else can hear the clock.

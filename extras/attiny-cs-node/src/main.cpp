@@ -105,8 +105,12 @@ using namespace SlimeVR::ATTinyCS;
 
 constexpr bool channelIsI2C(uint8_t channel) { return (I2C_CHANNELS >> channel) & 1; }
 
+// The chain address comes from ATTinyCSProtocol.h, shared with the tracker. Override
+// with -DBASE_ADDRESS only for a second chain on the same I2C bus, and then use an
+// address from AddressWhitelist and set the matching baseAddress in
+// board-defaults.json.
 #ifndef BASE_ADDRESS
-#define BASE_ADDRESS 0x13
+#define BASE_ADDRESS DefaultBaseAddress
 #endif
 
 // PA6 in, PA7 out is not a free choice in the default build: on an 8-pin tinyAVR the

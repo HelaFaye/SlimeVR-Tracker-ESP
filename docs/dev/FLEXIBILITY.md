@@ -64,14 +64,13 @@ shaped around (DEC-004).
 10 and the descriptor machinery has no limit. Raise it when something needs more.
 
 **Chains sharing an I2C bus must not share an address** — and writing this section is how
-that was found. Two chains may share SDA/SCL and differ only by strobe pin, which is what
-the two-chain example does. But every node on both chains hears every frame, so an `ARM`
-meant for the leg chain also arms the matching node id on the arm chain. Differing strobes
+that was found. Two chains may share SDA/SCL and differ only by strobe pin. But every node
+on both chains hears every frame, so an `ARM` meant for one chain also arms the matching
+node id on the other. Differing strobes
 mean no chip select is asserted wrongly, but a **gated I2C sensor on the unintended chain
 would ungate and answer**, which is a silent wrong-sensor read.
 
-The example originally had both chains on `0x13`. Fixed to `0x13` and `0x12`, and
-`preprocessor.py` now refuses the configuration outright, because it is invisible at
+`preprocessor.py` refuses the configuration outright, because it is invisible at
 runtime:
 
 ```
@@ -79,5 +78,15 @@ chains 'legs' and 'arms' share I2C bus SCL 4/SDA 5 and address 0x13;
 give each chain its own address from ATTinyCS::AddressWhitelist
 ```
 
-The whitelist has seven entries, so seven chains can share one I2C bus. Beyond that, put
-them on different pin pairs, or add a chain id to the frame — not done.
+The whitelist has seven entries, so up to seven chains can share one I2C bus for **SPI**
+sensors. Beyond that, put them on different pin pairs, or add a chain id to the frame —
+not done.
+
+Distinct addresses are not enough for **gated I2C sensors** on two chains on one bus. Each
+chain keeps its own node armed independently, so a sensor on each chain can be ungated at
+the same time; two at the same sensor address then collide. Until the host disarms the
+other chains on a shared bus, put chains carrying I2C sensors on separate pin pairs.
+
+No shipped board uses two chains: `BOARD_SLIMEVR_C5_CHAIN_HUB` once did, with the second
+strobe on GPIO15, which the hub hardware leaves unconnected. `sim/check_board_config.py`
+exercises the named-chain path instead.

@@ -29,7 +29,7 @@
  * chain. Shared verbatim by the tracker firmware and by extras/attiny-cs-node, so keep
  * this header free of Arduino and of anything the ATtiny toolchain can't compile.
  *
- * Full protocol description: docs/dev/ATTINY-CS-PROTOCOL.md
+ * Full protocol description: docs/I2SPI.md
  */
 
 namespace SlimeVR::ATTinyCS {

@@ -124,23 +124,21 @@ are packed into one byte: `(nodeId << 4) | channel`.
 
 ## 4. Commands
 
-All commands are a one-byte opcode, optionally followed by one payload byte.
+Every frame is exactly **three bytes**, written to the chain address (`0x13` by default):
+opcode, target, value. Every node hears every frame and decodes the target itself, so there
+is no per-node address to get wrong. `target` is `(nodeId << 4) | channel`; commands
+that act on the whole chain ignore it.
 
-**The two opcode spaces are deliberately disjoint.** Arduino TWI slave drivers on the
-ATtiny cores do not report *which* of a node's two addresses matched, so the node cannot
-distinguish a chain write from a unicast write by address. Disjoint opcodes make the
-address irrelevant to decoding. Keep them disjoint when extending the protocol.
+### 4.1 Chain-wide
 
-### 4.1 Chain address (`0x30`)
+| Opcode | Target | Value | Meaning |
+|---|---|---|---|
+| `0x01` `ARM` | node, channel | ignored | The matching node arms that channel. Every other node, and every other channel on that node, disarms. `nodeId = 0` disarms all. |
+| `0x02` `DISARM_ALL` | ignored | ignored | Equivalent to `ARM 0`. |
+| `0x03` `POWER_ALL` | ignored | `0` off, `1` on | Every node gates its sensor supply at once. |
+| `0x7F` `RESET_ALL` | ignored | ignored | Back to power-on state: disarmed, CS high, sensors unpowered. |
 
-| Opcode | Payload | Meaning |
-|---|---|---|
-| `0x01` `ARM` | `(nodeId << 4) \| channel` | The matching node arms that channel. Every other node, and every other channel on that node, disarms. `nodeId = 0` disarms all. |
-| `0x02` `DISARM_ALL` | — | Equivalent to `ARM 0`. |
-| `0x03` `POWER_ALL` | `0` off, `1` on | Every node gates its sensor supply at once. |
-| `0x7F` `RESET_ALL` | — | Back to power-on state: disarmed, CS high, sensors unpowered. |
-
-`ARM` is the hot path: 3 bytes on the wire, ~70 µs at 400 kHz, ~30 µs at 1 MHz, issued
+`ARM` is the hot path: one 3-byte frame, ~70 µs at 400 kHz, ~30 µs at 1 MHz, issued
 once per sensor switch. The host skips it entirely when the requested target is already
 armed.
 
@@ -149,33 +147,38 @@ there is no window in which two are armed. That is a safety property: two nodes 
 CS means two IMUs driving MISO, which is a bus fight rather than a glitch and is close to
 invisible on a scope.
 
-### 4.2 Unicast address (`0x30 + nodeId`)
+### 4.2 Addressed to one node
 
-| Opcode | Payload | Meaning |
-|---|---|---|
-| `0x10` `SET_CS` | `(channel << 4) \| level` | Software-CS fallback. Only honoured while armed **on that channel**, so a stale command cannot pull a chip select out from under the host. |
-| `0x11` `SET_MODE` | `0` software, `1` strobe | Persists until reset. Power-on default is strobe. |
-| `0x12` `SET_SENSOR_POWER` | `0` off, `1` on | Drives the VCC pass MOSFET. |
-| `0x13` `SET_SENSOR_RESET` | `0` release, `1` hold | Cuts the rail — a power cycle is a stronger reset than the sensor's own and costs no extra pin. |
-| `0x20` `IDENTIFY` | — | Next read returns the identity block. |
+Ignored by every node whose id does not match the target.
+
+| Opcode | Target | Value | Meaning |
+|---|---|---|---|
+| `0x10` `SET_CS` | node, channel | `0` assert, `1` release | Software-CS fallback. Only honoured while armed **on that channel** and in software mode, so a stale command cannot pull a chip select out from under the host. |
+| `0x11` `SET_MODE` | node | `0` software, `1` strobe | Persists until reset. Power-on default is strobe. |
+| `0x12` `SET_SENSOR_POWER` | node | `0` off, `1` on | Drives the VCC pass MOSFET. |
+| `0x13` `SET_SENSOR_RESET` | node | `0` release, `1` hold | Cuts the rail — a power cycle is a stronger reset than the sensor's own and costs no extra pin. |
+| `0x20` `IDENTIFY` | node | ignored | That node, and only that node, answers the next read. |
 
 ### 4.3 Reads
 
-A read from a unicast address returns four bytes:
+A read from the chain address is answered by the node the last `IDENTIFY` selected, with
+four bytes:
 
 | Byte | Meaning |
 |---:|---|
 | 0 | Magic `0x5C` — distinguishes a node from whatever else answers at that address |
-| 1 | Protocol version, currently `0x02` |
+| 1 | Protocol version, currently `0x03` |
 | 2 | `nodeId` as the node believes it to be |
 | 3 | Status: bit0 armed, bit1 strobe mode, bit2 sensor powered, bit3 held in reset |
 
 Byte 2 exists to catch the failure that otherwise costs an afternoon: a node flashed with
-the wrong `-DNODE_ID`. The host logs an error when a node answering at one address reports
-a different id.
+the wrong `-DNODE_ID`. The host logs an error when the node it identified reports a
+different id.
 
-A v1 node ignores the channel nibble and still works as a single-channel node, so v2 is
-backward compatible in the direction that matters. The host warns when it probes one.
+v3 is not wire-compatible with v1 or v2, which used a second, per-node address. An older
+node listens on the wrong address and reads a v3 frame's target byte as its payload, so
+reflash every node when moving to v3. The host logs a warning if a node reports an older
+version.
 
 ---
 

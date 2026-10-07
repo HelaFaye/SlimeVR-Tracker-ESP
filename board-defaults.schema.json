@@ -167,7 +167,7 @@
 					"type": "integer",
 					"minimum": 8,
 					"maximum": 112,
-					"description": "Chain address; nodes also answer on baseAddress + nodeId"
+					"description": "Chain I2C address. Must be in ATTinyCS::AddressWhitelist; defaults to ATTinyCS::DefaultBaseAddress (0x13). Nodes must be built with the same address."
 				}
 			},
 			"required": ["scl", "sda"]

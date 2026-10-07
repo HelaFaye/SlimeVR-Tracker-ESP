@@ -83,6 +83,43 @@ def format_value(val: Any, typ: str, key: str = "<unknown>") -> str:
 LEGACY_SPI_BUS = "DIRECT_SPI(24'000'000, MSBFIRST, SPI_MODE3)"
 
 
+# The chain address is defined once, in ATTinyCSProtocol.h, which the node firmware also
+# builds against. Read it from there: separate copies here, in globals.h and in the node
+# build once disagreed (0x30 against 0x13), and a hub built that way finds no nodes.
+PROTOCOL_HEADER = Path("./src/sensorinterface/ATTinyCSProtocol.h")
+_chain_protocol_cache: Optional[tuple] = None
+
+
+def _chain_protocol() -> tuple:
+    """(default address, whitelist) as declared in ATTinyCSProtocol.h."""
+    global _chain_protocol_cache
+    if _chain_protocol_cache is None:
+        text = PROTOCOL_HEADER.read_text()
+        default = re.search(r"DefaultBaseAddress\s*=\s*(0x[0-9A-Fa-f]+)", text)
+        whitelist = re.search(r"AddressWhitelist\[\]\s*=\s*\{([^}]*)\}", text)
+        if not default or not whitelist:
+            raise ValueError(f"Chain address constants not found in {PROTOCOL_HEADER}")
+        _chain_protocol_cache = (
+            int(default.group(1), 16),
+            [int(a, 16) for a in whitelist.group(1).split(",") if a.strip()],
+        )
+    return _chain_protocol_cache
+
+
+def _chain_address(chain: dict) -> int:
+    """A chain's I2C address, defaulted and checked against the protocol whitelist."""
+    default, whitelist = _chain_protocol()
+    addr = chain.get('baseAddress', default)
+    if addr not in whitelist:
+        raise ValueError(
+            f"chain address {addr:#04x} is not in ATTinyCS::AddressWhitelist "
+            f"({', '.join(f'{a:#04x}' for a in whitelist)}). Nodes listen on "
+            f"{default:#04x} unless built with -DBASE_ADDRESS; pick a whitelisted "
+            "address and build the nodes to match."
+        )
+    return addr
+
+
 def _format_chip_select(cs: Any, chains: Optional[dict] = None) -> str:
     """A chip select is either a host GPIO (a plain pin string, the original form) or an
     object describing a remote ATtiny node on an RJ45 sensor chain."""
@@ -111,7 +148,7 @@ def _format_chip_select(cs: Any, chains: Optional[dict] = None) -> str:
             return (
                 f"ATTINY_CS_ON({format_value(c.get('scl'), 'pin')}, "
                 f"{format_value(c.get('sda'), 'pin')}, "
-                f"{format_value(c.get('baseAddress', 0x13), 'number')}, "
+                f"{format_value(_chain_address(c), 'number')}, "
                 f"{format_value(c.get('strobe', -1), 'number')}, "
                 f"{format_value(node, 'number')}, "
                 f"{format_value(channel, 'number')})"
@@ -159,7 +196,7 @@ def _chains(values: dict) -> dict:
     seen = {}
     for name, c in chains.items():
         bus = (str(c.get('scl')), str(c.get('sda')))
-        addr = c.get('baseAddress', 0x13)
+        addr = _chain_address(c)
         key = (bus, addr)
         if key in seen:
             raise ValueError(
@@ -235,7 +272,7 @@ def _build_board_flags(defaults: dict, board_name: str) -> List[str]:
         if remote_cs:
             add('REMOTE_CS_SCL', remote_cs.get('scl'), 'pin')
             add('REMOTE_CS_SDA', remote_cs.get('sda'), 'pin')
-            add('REMOTE_CS_BASE_ADDR', remote_cs.get('baseAddress', 48), 'number')
+            add('REMOTE_CS_BASE_ADDR', _chain_address(remote_cs), 'number')
             # -1 means "no strobe conductor", i.e. drive CS over I2C instead. Slow.
             add('REMOTE_CS_STROBE', remote_cs.get('strobe', -1), 'number')
 
@@ -248,7 +285,7 @@ def _build_board_flags(defaults: dict, board_name: str) -> List[str]:
                     format_value(sensor.get('imu'), 'raw'),
                     f"I2SPI_WIRE_ON({format_value(c.get('scl'), 'pin')}, "
                     f"{format_value(c.get('sda'), 'pin')}, "
-                    f"{format_value(c.get('baseAddress', 0x13), 'number')}, "
+                    f"{format_value(_chain_address(c), 'number')}, "
                     f"{format_value(c.get('strobe', -1), 'number')}, "
                     f"{format_value(sensor.get('node'), 'number')}, "
                     f"{format_value(sensor.get('channel', 0), 'number')})",

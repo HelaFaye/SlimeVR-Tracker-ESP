@@ -3,7 +3,7 @@
 Firmware for the little board that sits next to each remote IMU on an RJ45 sensor chain.
 Its entire job is to own that IMU's `CS` line.
 
-- Protocol: `../../docs/dev/ATTINY-CS-PROTOCOL.md`
+- Protocol: `../../docs/I2SPI.md`
 - Wiring and cable pinout: `../../docs/dev/HARDWARE-RJ45-SPI-BUS.md`
 - Why this exists at all: `../../docs/dev/DECISIONS.md`, DEC-003 and DEC-004
 
@@ -49,7 +49,8 @@ IMU. A hung node can fail to select; it cannot corrupt SPI data.
 
 ## How arming works
 
-1. The host writes `ARM <id>` to the shared chain address `0x30`. Every node sees it.
+1. The host writes `ARM <id>` to the shared chain address (`0x13`, from
+   `ATTinyCSProtocol.h`). Every node sees it.
 2. The node whose id matches enables its CCL LUT, which passes `CS_STROBE` through to
    `CS` combinationally. Every other node disables its LUT and its port holds `CS` high.
 3. The host then frames each SPI transaction by toggling one ordinary GPIO.
