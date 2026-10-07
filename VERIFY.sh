@@ -7,7 +7,7 @@
 # missing are skipped with a note rather than failing, so a partial toolchain still gets
 # you partial coverage. See docs/dev/SETUP.md for per-distribution package names.
 #
-# Overrides: CXX, AVR_GCC, CLANG_FORMAT, KICAD_SYMBOL_DIR, KICAD_FOOTPRINT_DIR.
+# Overrides: CXX, AVR_GCC, CLANG_FORMAT.
 set -uo pipefail
 cd "$(dirname "$0")"
 
@@ -51,19 +51,9 @@ else
   skip "Node firmware" "no $AVR_GCC (Arch: avr-gcc avr-libc, Debian: gcc-avr avr-libc)"
 fi
 
-# Both of these resolve stock KiCad symbols by pin function. Without an installed
-# symbol library every part is unresolvable, and the pin-order guard's cases cannot
-# fail for the reason they are testing either -- so they report environment, not
-# defects. Skip them rather than turn an uninstalled KiCad into 24 schematic errors.
-if python3 hardware/gen/verify.py --have-libs; then
-  run "KiCad symbols and footprints" bash -c 'cd hardware/gen && python3 verify.py'
-  run "Symbol pin-order guard" python3 hardware/gen/test_pin_order.py
-else
-  skip "KiCad symbols and footprints" \
-    "no KiCad symbol library (Arch: kicad kicad-library, Debian: kicad-symbols kicad-footprints)"
-  skip "Symbol pin-order guard" "needs the KiCad symbol library above"
-fi
-run "I2C address collisions" python3 hardware/gen/i2c_address_map.py --check
+# The KiCad, BOM and panel checks live with the boards in
+# HelaFaye/SlimeVR-Tracker-ESP-Hardware (./verify.sh there).
+run "I2C address collisions" python3 sim/i2c_address_map.py --check
 
 run "Board config generation" python3 -c '
 import json, types

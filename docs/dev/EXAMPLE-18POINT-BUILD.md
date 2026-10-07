@@ -4,7 +4,7 @@ A worked end-to-end example of the RJ45 chain design: five battery-powered hub t
 each carrying its own IMU and hosting one or two remote extensions over flat RJ45.
 
 Protocol reference: `ATTINY-CS-PROTOCOL.md`. Cable and electrical limits:
-`HARDWARE-RJ45-SPI-BUS.md`. Board specifications: `../hardware/BOARD-SPECS.md`.
+`HARDWARE-RJ45-SPI-BUS.md`. Board specifications: [`docs/BOARD-SPECS.md`](https://github.com/HelaFaye/SlimeVR-Tracker-ESP-Hardware/blob/main/docs/BOARD-SPECS.md) in the hardware repo.
 
 ---
 

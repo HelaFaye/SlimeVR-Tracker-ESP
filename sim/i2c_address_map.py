@@ -9,8 +9,8 @@ parts someone might add, or with the addresses the I2C specification reserves.
 This computes the answer from the firmware itself rather than from memory: sensor
 addresses are parsed out of the driver headers, so the map cannot drift from the code.
 
-    python3 hardware/gen/i2c_address_map.py            # print the map and the whitelist
-    python3 hardware/gen/i2c_address_map.py --check    # fail if the configured base collides
+    python3 sim/i2c_address_map.py            # print the map and the whitelist
+    python3 sim/i2c_address_map.py --check    # fail if the configured base collides
 """
 
 import argparse
@@ -19,7 +19,7 @@ import re
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[1]
 
 # Reserved by the I2C specification: 0x00-0x07 (general call, CBUS, 10-bit prefix) and
 # 0x78-0x7F (10-bit addressing). Never usable, whatever else is on the bus.

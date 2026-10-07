@@ -40,14 +40,14 @@ namespace SlimeVR::ATTinyCS {
 ///
 /// Protocol v2 used a shared address plus one unicast address per node, which needed 16
 /// consecutive free addresses. There is no such window on a bus that also carries the
-/// sensors this firmware supports: see hardware/gen/i2c_address_map.py, which computes
+/// sensors this firmware supports: see sim/i2c_address_map.py, which computes
 /// the map from the driver sources. v3 needs one address, and the whitelist below has
 /// plenty. See docs/dev/DECISIONS.md DEC-015.
 constexpr uint8_t DefaultBaseAddress = 0x13;
 constexpr uint8_t AddressSpan = 1;
 
 /// Vetted alternatives, ranked by distance from the nearest address any supported or
-/// common part uses. Regenerate with `python3 hardware/gen/i2c_address_map.py`; the
+/// common part uses. Regenerate with `python3 sim/i2c_address_map.py`; the
 /// checker in sim/check_numbers.py fails if DefaultBaseAddress drifts off this list.
 constexpr uint8_t AddressWhitelist[] = {0x13, 0x12, 0x14, 0x11, 0x15, 0x34, 0x35};
 

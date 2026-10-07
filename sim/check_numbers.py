@@ -200,31 +200,8 @@ print("\nPower staging")
 check("settle time, 8 extensions", 8 * settle_ms, 120, 0, " ms")
 check("settle time, 4-node chain", 4 * settle_ms, 60, 0, " ms")
 
-# ------------------------------------------------------------- build totals
-
-print("\nBuild totals")
-sys.path.insert(0, str(ROOT / "hardware" / "gen"))
-import boards as B  # noqa: E402
-
-hub_n = len(B.BOARDS["hub"]["comps"])
-node_n = len(B.BOARDS["node"]["comps"])
-check("BOM placements, 5 hubs + 8 nodes", 5 * hub_n + 8 * node_n, 303, 0, "")
-
-hub_w, hub_h = B.BOARDS["hub"]["size_mm"]
-node_w, node_h = B.BOARDS["node"]["size_mm"]
-import panel as P  # noqa: E402
-
-sel = {"hub": 5, "node": 8}
-cols, rows, cw, ch = P.layout(sel)
-check("panel cell width", cw, 45.4, 0.01, " mm")
-check("panel cell height", ch, 30.4, 0.01, " mm")
-check("panel width", cols * cw + 2 * P.PANEL_RAIL_MM, 373.2, 0.01, " mm")
-check("panel height", rows * ch + 2 * P.PANEL_RAIL_MM, 70.8, 0.01, " mm")
-checks += 1
-if cols * rows >= sum(sel.values()):
-    print(f"  [ok] {cols}x{rows} grid holds {sum(sel.values())} boards")
-else:
-    failures.append("panel grid too small")
+# Build totals (BOM placements, panel) moved to the hardware repo,
+# HelaFaye/SlimeVR-Tracker-ESP-Hardware: gen/check_build_totals.py.
 
 # --------------------------------------------------- firmware/table consistency
 
