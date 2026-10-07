@@ -447,7 +447,7 @@ opcode, target, value — and reads are answered by whichever node the last `Ide
 selected. The per-node unicast addresses of v1/v2 are gone.
 
 **Why, and this one was forced rather than chosen.** v2 needed `base` through
-`base + 15`: sixteen consecutive free addresses. `hardware/gen/i2c_address_map.py`
+`base + 15`: sixteen consecutive free addresses. `sim/i2c_address_map.py`
 computes the occupied map from the driver sources plus the parts commonly found on a
 hobbyist I2C bus, and the answer is stark:
 

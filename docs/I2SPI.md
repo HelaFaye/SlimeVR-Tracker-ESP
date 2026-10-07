@@ -83,7 +83,7 @@ by a target byte inside the frame, not by address.
 
 This is not a stylistic choice. The previous scheme needed sixteen consecutive free
 addresses, and there is no such window on a bus that also carries the sensors this
-firmware supports — see `hardware/gen/i2c_address_map.py`, which computes the map from the
+firmware supports — see `sim/i2c_address_map.py`, which computes the map from the
 driver sources rather than from memory:
 
 ```

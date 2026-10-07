@@ -4,6 +4,17 @@ Firmware for ESP8266 / ESP32 microcontrollers and different IMU sensors to use t
 
 Requires [SlimeVR Server](https://github.com/SlimeVR/SlimeVR-Server) to work with SteamVR and resolve pose. Should be compatible with [owoTrack](https://github.com/abb128/owo-track-driver), but is not guaranteed.
 
+## Related repositories (I2SPI fork)
+
+This fork adds ESP32-C5 support and I2SPI, which chains several SPI or I2C sensors over
+one RJ45 cable (see [`docs/I2SPI.md`](docs/I2SPI.md)). The work is split across three repos:
+
+| Repo | Contents |
+|---|---|
+| **SlimeVR-Tracker-ESP** (this one) | Tracker firmware, the I2SPI protocol, ATtiny node firmware (`extras/attiny-cs-node`), cable pinout, chain simulation (`sim/`), `VERIFY.sh` |
+| [SlimeVR-Tracker-ESP-Hardware](https://github.com/HelaFaye/SlimeVR-Tracker-ESP-Hardware) | Hub and node boards: KiCad generator, symbol libraries, BOM, panel |
+| [SlimeVR-Server](https://github.com/HelaFaye/SlimeVR-Server) | Server fork; `tools/synthetic-tracker/` drives fake trackers at the server |
+
 ## Configuration
 
 Firmware configuration is located in the `defines.h` file. For more information on how to configure your firmware, refer to the [Configuring the firmware project section of SlimeVR documentation](https://docs.slimevr.dev/firmware/configuring-project.html).

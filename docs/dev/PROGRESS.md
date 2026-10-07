@@ -4,6 +4,28 @@ Newest first. Each entry says what changed, what was verified, and what is still
 
 ---
 
+## 2026-10-07 — Split into three repos
+
+The project is now three repos, so each one carries one kind of work.
+
+| Repo | What moved there |
+|---|---|
+| `HelaFaye/SlimeVR-Tracker-ESP` (this) | Stays: firmware, protocol, node firmware, cable pinout, chain sim |
+| `HelaFaye/SlimeVR-Tracker-ESP-Hardware` | `hardware/` and `docs/hardware/BOARD-SPECS.md`, with their history (git filter-repo) |
+| `HelaFaye/SlimeVR-Server` (fork) | `sim/synthetic_tracker.py` and the ROM half of `sweep.sh`, as `tools/synthetic-tracker/` |
+
+The repos were coupled in two places, and both were cut:
+
+- `i2c_address_map.py` reads only firmware sources, so it moved *into* this repo at
+  `sim/i2c_address_map.py` rather than leaving with the hardware.
+- `check_numbers.py` imported `hardware/gen` for the BOM and panel totals. Those checks
+  moved to the hardware repo as `gen/check_build_totals.py`. The other 31 checks stay here.
+
+`VERIFY.sh` lost the KiCad suites, which now run from `./verify.sh` in the hardware repo.
+Entries below this one refer to `hardware/...` paths as they were at the time.
+
+---
+
 ## 2026-09-02t — Exhaustive topology sweep, and range-of-motion poses
 
 `sim/sweep.sh` runs both halves: every chain topology, then full range of motion.
