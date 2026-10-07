@@ -233,5 +233,18 @@ def main():
     return 1 if bad else 0
 
 
+def have_system_libs():
+    """True when a system KiCad symbol library is reachable.
+
+    SYM_DIRS[:2] are this project's own libraries, which are always present; a
+    system library beyond them is what the stock-symbol checks need. VERIFY.sh
+    probes this so it can skip those suites instead of reporting an uninstalled
+    KiCad as a dozen schematic defects.
+    """
+    return any(d.exists() for d in SYM_DIRS[2:])
+
+
 if __name__ == "__main__":
+    if "--have-libs" in sys.argv:
+        sys.exit(0 if have_system_libs() else 1)
     sys.exit(main())

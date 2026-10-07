@@ -51,8 +51,18 @@ else
   skip "Node firmware" "no $AVR_GCC (Arch: avr-gcc avr-libc, Debian: gcc-avr avr-libc)"
 fi
 
-run "KiCad symbols and footprints" bash -c 'cd hardware/gen && python3 verify.py'
-run "Symbol pin-order guard" python3 hardware/gen/test_pin_order.py
+# Both of these resolve stock KiCad symbols by pin function. Without an installed
+# symbol library every part is unresolvable, and the pin-order guard's cases cannot
+# fail for the reason they are testing either -- so they report environment, not
+# defects. Skip them rather than turn an uninstalled KiCad into 24 schematic errors.
+if python3 hardware/gen/verify.py --have-libs; then
+  run "KiCad symbols and footprints" bash -c 'cd hardware/gen && python3 verify.py'
+  run "Symbol pin-order guard" python3 hardware/gen/test_pin_order.py
+else
+  skip "KiCad symbols and footprints" \
+    "no KiCad symbol library (Arch: kicad kicad-library, Debian: kicad-symbols kicad-footprints)"
+  skip "Symbol pin-order guard" "needs the KiCad symbol library above"
+fi
 run "I2C address collisions" python3 hardware/gen/i2c_address_map.py --check
 
 run "Board config generation" python3 -c '
@@ -66,15 +76,20 @@ print(f"  {n} boards generate their flags")'
 
 if [ -n "$CLANG_FORMAT" ]; then
   ver=$("$CLANG_FORMAT" --version | grep -oE '[0-9]+' | head -1)
-  if [ "$ver" != "17" ]; then
-    echo; echo "=== Formatting ==="
-    echo "  NOTE: $CLANG_FORMAT is version $ver; CI pins 17, and the two disagree."
-    echo "  Differences reported here may not be real. For a pinned copy:"
-    echo "    pipx install clang-format==17.0.6   (or pip install in a venv)"
+  fmt_files=(src/sensorinterface/*.cpp src/sensorinterface/*.h
+             src/sensors/SensorBuilder.cpp extras/attiny-cs-node/src/main.cpp)
+  if [ "$ver" = "17" ]; then
+    run "Formatting (clang-format 17)" "$CLANG_FORMAT" --dry-run --Werror "${fmt_files[@]}"
+  else
+    # A different major version reports differences that are not violations, so this
+    # is advisory: shown, but it does not fail the run. Only the pinned 17 gates.
+    echo; echo "=== Formatting (clang-format $ver, advisory) ==="
+    echo "  CI pins 17 and the two disagree, so differences below may not be real."
+    echo "  For a pinned copy: pipx install clang-format==17.0.6"
+    "$CLANG_FORMAT" --dry-run --Werror "${fmt_files[@]}" \
+      && echo "  no differences" \
+      || echo "  differences above are not counted as failures (version mismatch)"
   fi
-  run "Formatting (clang-format $ver)" "$CLANG_FORMAT" --dry-run --Werror \
-    src/sensorinterface/*.cpp src/sensorinterface/*.h \
-    src/sensors/SensorBuilder.cpp extras/attiny-cs-node/src/main.cpp
 else
   skip "Formatting" "no clang-format (Arch: clang, Debian: clang-format-17)"
 fi
