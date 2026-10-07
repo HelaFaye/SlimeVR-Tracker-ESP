@@ -66,7 +66,7 @@
 // --- Remote chip select over an RJ45 sensor chain (ATtiny CS nodes)
 // Defaults for the ATTINY_CS(nodeId) descriptor. A board that puts the node chain on
 // the same I2C pins as its local sensors needs to set nothing; boards with a dedicated
-// chain bus override these. See docs/dev/ATTINY-CS-PROTOCOL.md.
+// chain bus override these. See docs/I2SPI.md.
 #ifndef REMOTE_CS_SCL
 #ifdef PIN_IMU_SCL
 #define REMOTE_CS_SCL PIN_IMU_SCL
@@ -83,8 +83,10 @@
 #endif
 #endif
 
+// Defaults to the protocol's own constant rather than a copy of it, so the host and the
+// node firmware (which builds against the same header) cannot disagree.
 #ifndef REMOTE_CS_BASE_ADDR
-#define REMOTE_CS_BASE_ADDR 0x30
+#define REMOTE_CS_BASE_ADDR SlimeVR::ATTinyCS::DefaultBaseAddress
 #endif
 
 // -1 disables the shared CS strobe conductor and falls back to driving CS over I2C.

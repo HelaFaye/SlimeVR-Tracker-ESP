@@ -4,6 +4,60 @@ Newest first. Each entry says what changed, what was verified, and what is still
 
 ---
 
+## 2026-10-07b — Three audit findings fixed: chain address, chained I2C bus, GPIO15 strobe
+
+### The chain address had four copies, and they disagreed
+
+The protocol header and node source said `0x13`. The node build (`platformio.ini`), the
+firmware default in `globals.h`, the generator's default and `BOARD_ESP32C5_RJ45_HUB` all
+said `0x30`. `BOARD_SLIMEVR_C5_CHAIN_HUB` said `0x13`/`0x12`. So nodes flashed with
+`pio run` listened on `0x30`, and the chain hub found none of them. `0x30` is also the
+MMC5983MA, which the whitelist exists to avoid.
+
+Now there is one copy. `globals.h` and the node firmware default to
+`ATTinyCS::DefaultBaseAddress`, the node build sets nothing, and the generator reads the
+default and the whitelist out of `ATTinyCSProtocol.h` and refuses any address off it.
+`compile-check.sh`'s override variant now uses a whitelisted `0x12`.
+
+### A chained I2C sensor was read on the wrong bus
+
+`ATTinyCSWireInterface::swapIn()` only moved Wire back to the chain's pins when the armed
+node changed. With a local I2C sensor polled in between, every cycle after the first read
+the chained sensor over the local bus. `swapIn()` now attaches Wire to the chain first,
+every time. That costs nothing when Wire is already there.
+
+The sim never saw this because its `swapI2C()` was a no-op. The model now tracks which
+pins Wire is on and NACKs chain traffic issued anywhere else. A new scenario alternates a
+local and a chained sensor: it failed 3 of 4 checks before the fix and passes after.
+
+### The chain hub had a second chain on an unwired pin
+
+`BOARD_SLIMEVR_C5_CHAIN_HUB` split its two extensions into "legs" and "arms" chains, the
+second with its strobe on GPIO15. The hub board has one RJ45 jack and one strobe (GPIO6),
+and leaves GPIO15 unconnected because it is SPICS1 on modules with in-package PSRAM. The
+18-point build doc always meant node 1 and node 2 on one chain. The board now says so.
+
+### Guarding against all three
+
+`sim/check_board_config.py` replaces the inline generation check in `VERIFY.sh`. It
+checks that every chain address is whitelisted, that the node build and `globals.h`
+carry no copy of the address, that named chains still generate and are refused when
+they collide or leave the whitelist, and that no ESP32-C5 chain pin is reserved
+(including GPIO15 and the UART pins). Run against the pre-fix tree, it fails on all
+three findings.
+
+`docs/I2SPI.md` §4 now describes v3 (one address, three-byte frames, version `0x03`).
+`ATTINY-CS-PROTOCOL.md` was entirely v2 and is now a pointer to it.
+
+### Not verified here
+
+avr-gcc isn't installed in this environment, so `compile-check.sh` didn't run. The node
+firmware passes a host `g++ -fsyntax-only` check in three configurations, which shows the
+new default compiles but isn't the AVR build. PlatformIO isn't installed either, so no
+firmware environment was built.
+
+---
+
 ## 2026-10-07 — Split into three repos
 
 The project is now three repos, so each one carries one kind of work.

@@ -16,6 +16,12 @@
 
 using namespace sim;
 
+// Declared in I2CWireSensorInterface.h, which drags in the real Wire; the model in
+// chain_model.cpp provides the definition.
+namespace SlimeVR {
+void swapI2C(uint8_t sclPin, uint8_t sdaPin);
+}
+
 namespace {
 
 int checks = 0;
@@ -385,6 +391,43 @@ void scenarioIdenticalI2CSensors() {
 	check(g_chain.failures == 0, "one-hot held across the whole scenario");
 }
 
+void scenarioChainedI2CBesideLocalI2C() {
+	std::printf("\n== Chained I2C sensor alternating with a local I2C sensor ==\n");
+	resetChain(1);
+	g_chain.nodes[0].hasWireSensor = true;
+	g_chain.nodes[0].wireAddress = 0x68;
+
+	SlimeVR::ATTinyCSBus bus(4, 5, SlimeVR::ATTinyCS::DefaultBaseAddress, 6);
+	bus.init();
+	SlimeVR::ATTinyCSWireInterface chained(&bus, 1, 0);
+
+	// A poll cycle: the local sensor's I2CWireSensorInterface moves Wire to its own
+	// pins, then the chained sensor's swapIn() has to move it back. The chained target
+	// stays armed between cycles, so the arm write is skipped from the second cycle on
+	// - which is exactly when Wire used to be left on the local pins.
+	g_chain.stats.reset();
+	int reached = 0;
+	for (int cycle = 0; cycle < 3; cycle++) {
+		SlimeVR::swapI2C(21, 22);
+		chained.swapIn();
+		Wire.beginTransmission(0x68);
+		Wire.write(0x00);
+		if (Wire.endTransmission() == 0) {
+			reached++;
+		}
+	}
+	check(reached == 3, "chained sensor reached on every cycle, not only the first");
+	check(
+		g_chain.stats.offChainI2C == 0,
+		"no chained traffic went out on the local bus"
+	);
+	check(
+		g_chain.stats.i2cWrites - g_chain.stats.wireSensorWrites == 1,
+		"armed once; later cycles still skip the arm write"
+	);
+	check(g_chain.failures == 0, "no bus fight");
+}
+
 void scenarioMisflashedNode() {
 	std::printf("\n== Node flashed with the wrong id ==\n");
 	resetChain(2);
@@ -411,6 +454,7 @@ int main() {
 	scenarioStagedPowerUp();
 	scenarioNodeRefusesPower();
 	scenarioIdenticalI2CSensors();
+	scenarioChainedI2CBesideLocalI2C();
 	scenarioMisflashedNode();
 
 	std::printf("\n%d checks, %d failed\n", checks, failed);

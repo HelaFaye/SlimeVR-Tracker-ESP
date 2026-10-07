@@ -55,14 +55,7 @@ fi
 # HelaFaye/SlimeVR-Tracker-ESP-Hardware (./verify.sh there).
 run "I2C address collisions" python3 sim/i2c_address_map.py --check
 
-run "Board config generation" python3 -c '
-import json, types
-src = open("scripts/preprocessor.py").read().replace("Import(\"env\")", "pass")
-src = src.split("schema_obj = _load_json")[0]
-m = types.ModuleType("pp"); exec(compile(src, "pp", "exec"), m.__dict__)
-n = len(m.build_boards(json.load(open("board-defaults.schema.json")),
-                       json.load(open("board-defaults.json"))))
-print(f"  {n} boards generate their flags")'
+run "Board config (generation, chain address, C5 chain pins)" python3 sim/check_board_config.py
 
 if [ -n "$CLANG_FORMAT" ]; then
   ver=$("$CLANG_FORMAT" --version | grep -oE '[0-9]+' | head -1)
