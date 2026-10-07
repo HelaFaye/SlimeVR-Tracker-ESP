@@ -1,118 +1,175 @@
 #include "i2cscan.h"
+
+#include <array>
+#include <cstdint>
+#include <string>
+
 #include "../../src/globals.h"
+#include "../../src/consts.h"
+
+namespace I2CSCAN {
+    enum class ScanState : uint8_t {
+        IDLE,
+        SCANNING,
+        DONE
+    };
+
+	namespace {
+		ScanState scanState = ScanState::IDLE;
+    	uint8_t currentSDA = 0;
+    	uint8_t currentSCL = 0;
+    	uint8_t currentAddress = 1;
+    	bool found = false;
+		uint8_t txFails = 0;
+    	std::vector<uint8_t> validPorts;
 
 #ifdef ESP8266
-uint8_t portArray[] = {16, 5, 4, 2, 14, 12, 13};
-uint8_t portExclude[] = {LED_PIN};
-String portMap[] = {"D0", "D1", "D2", "D4", "D5", "D6", "D7"};
-// ESP32C3 has not as many ports as the ESP32
+		std::array<uint8_t, 7> portArray = {16, 5, 4, 2, 14, 12, 13};
+		std::array<std::string, 7> portMap = {"D0", "D1", "D2", "D4", "D5", "D6", "D7"};
+		std::array<uint8_t, 1> portExclude = {LED_PIN};
 #elif defined(ESP32C3)
-uint8_t portArray[] = {2, 3, 4, 5, 6, 7, 8, 9, 10};
-uint8_t portExclude[] = {18, 19, 20, 21, LED_PIN};
-String portMap[] = {"2", "3", "4", "5", "6", "7", "8", "9", "10"};
+		std::array<uint8_t, 9> portArray = {2, 3, 4, 5, 6, 7, 8, 9, 10};
+		std::array<std::string, 9> portMap = {"2", "3", "4", "5", "6", "7", "8", "9", "10"};
+		std::array<uint8_t, 5> portExclude = {18, 19, 20, 21, LED_PIN};
+#elif defined(ESP32C6)
+		std::array<uint8_t, 20> portArray = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 14, 15, 18, 19, 20, 21, 22, 23};
+		std::array<std::string, 20> portMap = {"0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "14", "15", "18", "19", "20", "21", "22", "23"};
+		std::array<uint8_t, 5> portExclude = {12, 13, 16, 17, LED_PIN};
 #elif defined(ESP32)
-uint8_t portArray[] = {4, 13, 14, 15, 16, 17, 18, 19, 21, 22, 23, 25, 26, 27, 32, 33};
-String portMap[] = {"4", "13", "14", "15", "16", "17", "18", "19", "21", "22", "23", "25", "26", "27", "32", "33"};
-uint8_t portExclude[] = {LED_PIN};
+		std::array<uint8_t, 16> portArray = {4, 13, 14, 15, 16, 17, 18, 19, 21, 22, 23, 25, 26, 27, 32, 33};
+		std::array<std::string, 16> portMap = {"4", "13", "14", "15", "16", "17", "18", "19", "21", "22", "23", "25", "26", "27", "32", "33"};
+		std::array<uint8_t, 1> portExclude = {LED_PIN};
 #endif
 
-namespace I2CSCAN
-{
+		bool selectNextPort() {
+			currentSCL++;
 
-    uint8_t pickDevice(uint8_t addr1, uint8_t addr2, bool scanIfNotFound) {
-        if(I2CSCAN::isI2CExist(addr1))
-            return addr1;
-        if(!I2CSCAN::isI2CExist(addr2)) {
-            if(scanIfNotFound) {
-                Serial.println("[ERR] I2C: Can't find I2C device on provided addresses, scanning for all I2C devices and returning");
-                I2CSCAN::scani2cports();
-            } else {
-                Serial.println("[ERR] I2C: Can't find I2C device on provided addresses");
-            }
-            return 0;
-        }
-        return addr2;
-    }
+			if(validPorts[currentSCL] == validPorts[currentSDA]) currentSCL++;
 
-    void scani2cports()
-    {
-        bool found = false;
-        for (uint8_t i = 0; i < sizeof(portArray); i++)
-        {
-            for (uint8_t j = 0; j < sizeof(portArray); j++)
-            {
-                if ((i != j) && !inArray(portArray[i], portExclude, sizeof(portExclude)) && !inArray(portArray[j], portExclude, sizeof(portExclude)))
-                {
-                    if(checkI2C(i, j))
-                        found = true;
-                }
-            }
-        }
-        if(!found) {
-            Serial.println("[ERR] I2C: No I2C devices found");
+			if (currentSCL < validPorts.size()) {
+				Wire.begin((int)validPorts[currentSDA], (int)validPorts[currentSCL]); //NOLINT
+				return true;
+			}
+
+			currentSCL = 0;
+			currentSDA++;
+
+			if (currentSDA >= validPorts.size()) {
+				if (!found) {
+					Serial.println("[ERROR] I2C: No I2C devices found"); //NOLINT
+				}
+	#ifdef ESP32
+				Wire.end();
+	#endif
+				Wire.begin(static_cast<int>(PIN_IMU_SDA), static_cast<int>(PIN_IMU_SCL));
+				scanState = ScanState::DONE;
+				return false;
+			}
+
+			Wire.begin((int)validPorts[currentSDA], (int)validPorts[currentSCL]);
+			return true;
+		}
+		template <uint8_t size1, uint8_t size2>
+		uint8_t countCommonElements(
+			const std::array<uint8_t, size1>& array1,
+			const std::array<uint8_t, size2>& array2) {
+
+			uint8_t count = 0;
+			for (const auto& elem1 : array1) {
+				for (const auto& elem2 : array2) {
+					if (elem1 == elem2) {
+						count++;
+					}
+				}
+			}
+
+			return count;
+		}
+	}  // anonymous namespace
+
+    void scani2cports() {
+        if (scanState != ScanState::IDLE) {
+			if (scanState == ScanState::DONE) {
+				Serial.println("[DEBUG] I2C scan finished previously, resetting and scanning again..."); //NOLINT
+			} else {
+				return; // Already scanning, do not start again
+			}
         }
 
-#if ESP32
-        Wire.end();
+        // Filter out excluded ports
+		validPorts.clear();
+		uint8_t excludes = countCommonElements<portArray.size(), portExclude.size()>(portArray, portExclude);
+		validPorts.reserve(portArray.size() - excludes); // Reserve space to avoid reallocations
+
+		for (const auto& port : portArray) {
+			if (std::find(portExclude.begin(), portExclude.end(), port) == portExclude.end()) {
+				validPorts.push_back(port); // Port is valid, add it to the list
+			}
+		}
+
+		// Reset scan variables and start scanning
+        found = false;
+        currentSDA = 0;
+        currentSCL = 1;
+        currentAddress = 1;
+		txFails = 0;
+        scanState = ScanState::SCANNING;
+	}
+
+    void update() {
+        if (scanState != ScanState::SCANNING) {
+            return;
+        }
+
+#ifdef ESP32
+		if (currentAddress == 1) {
+            Wire.end();
+		}
 #endif
 
-        // Reset the I2C interface back to it's original values
-        Wire.begin(static_cast<int>(PIN_IMU_SDA), static_cast<int>(PIN_IMU_SCL));
-    }
+        Wire.beginTransmission(currentAddress);
+        const uint8_t error = Wire.endTransmission();
 
-    bool inArray(uint8_t value, uint8_t* array, size_t arraySize)
-    {
-        for (size_t i = 0; i < arraySize; i++)
-        {
-            if (value == array[i]) 
-            {
-                return true;
-            }
+        if (error == 0) {
+            Serial.printf("[INFO ] I2C (@ %s(%d) : %s(%d)): I2C device found at address 0x%02x!\n",
+                            portMap[currentSDA].c_str(), validPorts[currentSDA], portMap[currentSCL].c_str(), validPorts[currentSCL], currentAddress);
+            found = true;
+        } else if (error == 4) { // Unable to start transaction, log and warn
+            Serial.printf("[WARN ] I2C (@ %s(%d) : %s(%d)): Unable to start transaction at address 0x%02x!\n",
+                            portMap[currentSDA].c_str(), validPorts[currentSDA], portMap[currentSCL].c_str(), validPorts[currentSCL], currentAddress);
+            txFails++;
         }
 
-        return false;
-    }
-    
-    bool checkI2C(uint8_t i, uint8_t j)
-    {
-        bool found = false;
+        currentAddress++;
 
-#if ESP32
-        Wire.end();
+        if (currentAddress <= 127) {
+			if (txFails > 5) {
+#if BOARD == BOARD_SLIMEVR_LEGACY || BOARD == BOARD_SLIMEVR_DEV || BOARD == BOARD_SLIMEVR || BOARD == BOARD_SLIMEVR_V1_2
+				Serial.printf("[ERROR] I2C: Too many transaction errors (%d), please power off the tracker and contact SlimeVR support!\n", txFails);
+#else
+				Serial.printf("[ERROR] I2C: Too many transaction errors (%d), please power off the tracker and check the IMU connections!\n", txFails);
 #endif
+			}
 
-        Wire.begin((int)portArray[i], (int)portArray[j]);
-
-        byte error, address;
-        int nDevices;
-        nDevices = 0;
-        for (address = 1; address < 127; address++)
-        {
-            // The i2c_scanner uses the return value of
-            // the Write.endTransmisstion to see if
-            // a device did acknowledge to the address.
-            Wire.beginTransmission(address);
-            error = Wire.endTransmission();
-
-            if (error == 0)
-            {
-                Serial.printf("[DBG] I2C (@ %s(%d) : %s(%d)): I2C device found at address 0x%02x  !\n", 
-                                portMap[i].c_str(), portArray[i], portMap[j].c_str(), portArray[j], address);
-                nDevices++;
-                found = true;
-            }
-            else if (error == 4)
-            {
-                Serial.printf("[ERR] I2C (@ %s(%d) : %s(%d)): Unknow error at address 0x%02x\n", 
-                                portMap[i].c_str(), portArray[i], portMap[j].c_str(), portArray[j], address);
-            }
+            return;
         }
-        return found;
+
+        currentAddress = 1;
+        selectNextPort();
     }
 
-    bool isI2CExist(uint8_t addr) {
-        Wire.beginTransmission(addr);
-        byte error = Wire.endTransmission();
+    bool hasDevOnBus(uint8_t addr) {
+        byte error;
+#if ESP32C3
+        int retries = 2;
+        do {
+#endif
+            Wire.beginTransmission(addr);
+            error = Wire.endTransmission(); // The return value of endTransmission is used to determine if a device is present
+#if ESP32C3
+        }
+        while (error != 0 && retries--);
+#endif
         if(error == 0)
             return true;
         return false;
@@ -133,60 +190,55 @@ namespace I2CSCAN
      * NSW Australia, www.forward.com.au
      * This code may be freely used for both private and commerical use
      */
-    int clearBus(uint8_t SDA, uint8_t SCL) {
-        #if defined(TWCR) && defined(TWEN)
-        TWCR &= ~(_BV(TWEN)); //Disable the Atmel 2-Wire interface so we can control the SDA and SCL pins directly
-        #endif
 
-        pinMode(SDA, INPUT_PULLUP); // Make SDA (data) and SCL (clock) pins Inputs with pullup.
+    int clearBus(uint8_t SDA, uint8_t SCL) {
+#if defined(TWCR) && defined(TWEN)
+        TWCR &= ~(_BV(TWEN)); // Disable the Atmel 2-Wire interface so we can control the SDA and SCL pins directly
+#endif
+
+        pinMode(SDA, INPUT_PULLUP);
         pinMode(SCL, INPUT_PULLUP);
 
-        boolean SCL_LOW = (digitalRead(SCL) == LOW); // Check is SCL is Low.
-        if (SCL_LOW) { //If it is held low Arduno cannot become the I2C master. 
-            return 1; //I2C bus error. Could not clear SCL clock line held low
+        boolean SCL_LOW = (digitalRead(SCL) == LOW);
+        if (SCL_LOW) {
+            return 1; // I2C bus error. Could not clear SCL, clock line held low.
         }
 
-        boolean SDA_LOW = (digitalRead(SDA) == LOW);  // vi. Check SDA input.
+        boolean SDA_LOW = (digitalRead(SDA) == LOW);
         int clockCount = 20; // > 2x9 clock
 
-        while (SDA_LOW && (clockCount > 0)) { //  vii. If SDA is Low,
+        while (SDA_LOW && (clockCount > 0)) {
             clockCount--;
-        // Note: I2C bus is open collector so do NOT drive SCL or SDA high.
-            pinMode(SCL, INPUT); // release SCL pullup so that when made output it will be LOW
-            pinMode(SCL, OUTPUT); // then clock SCL Low
-            delayMicroseconds(10); //  for >5uS
-            pinMode(SCL, INPUT); // release SCL LOW
-            pinMode(SCL, INPUT_PULLUP); // turn on pullup resistors again
-            // do not force high as slave may be holding it low for clock stretching.
-            delayMicroseconds(10); //  for >5uS
-            // The >5uS is so that even the slowest I2C devices are handled.
-            SCL_LOW = (digitalRead(SCL) == LOW); // Check if SCL is Low.
-            int counter = 20;
-            while (SCL_LOW && (counter > 0)) {  //  loop waiting for SCL to become High only wait 2sec.
-            counter--;
-            delay(100);
+            pinMode(SCL, INPUT);
+            pinMode(SCL, OUTPUT);
+            delayMicroseconds(10);
+            pinMode(SCL, INPUT);
+            pinMode(SCL, INPUT_PULLUP);
+            delayMicroseconds(10);
             SCL_LOW = (digitalRead(SCL) == LOW);
+            int counter = 20;
+            while (SCL_LOW && (counter > 0)) {
+                counter--;
+                delay(100);
+                SCL_LOW = (digitalRead(SCL) == LOW);
             }
-            if (SCL_LOW) { // still low after 2 sec error
-            return 2; // I2C bus error. Could not clear. SCL clock line held low by slave clock stretch for >2sec
+            if (SCL_LOW) {
+                return 2;
             }
-            SDA_LOW = (digitalRead(SDA) == LOW); //   and check SDA input again and loop
+            SDA_LOW = (digitalRead(SDA) == LOW);
         }
-        if (SDA_LOW) { // still low
-            return 3; // I2C bus error. Could not clear. SDA data line held low
+        if (SDA_LOW) {
+            return 3;
         }
 
-        // else pull SDA line low for Start or Repeated Start
-        pinMode(SDA, INPUT); // remove pullup.
-        pinMode(SDA, OUTPUT);  // and then make it LOW i.e. send an I2C Start or Repeated start control.
-        // When there is only one I2C master a Start or Repeat Start has the same function as a Stop and clears the bus.
-        /// A Repeat Start is a Start occurring after a Start with no intervening Stop.
-        delayMicroseconds(10); // wait >5uS
-        pinMode(SDA, INPUT); // remove output low
-        pinMode(SDA, INPUT_PULLUP); // and make SDA high i.e. send I2C STOP control.
-        delayMicroseconds(10); // x. wait >5uS
-        pinMode(SDA, INPUT); // and reset pins as tri-state inputs which is the default state on reset
+        pinMode(SDA, INPUT);
+        pinMode(SDA, OUTPUT);
+        delayMicroseconds(10);
+        pinMode(SDA, INPUT);
+        pinMode(SDA, INPUT_PULLUP);
+        delayMicroseconds(10);
+        pinMode(SDA, INPUT);
         pinMode(SCL, INPUT);
-        return 0; // all ok
+        return 0;
     }
 }

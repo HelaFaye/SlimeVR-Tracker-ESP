@@ -1,132 +1,236 @@
 /*
-    SlimeVR Code is placed under the MIT license
-    Copyright (c) 2021 Eiren Rain
+	SlimeVR Code is placed under the MIT license
+	Copyright (c) 2021 Eiren Rain
 
-    Permission is hereby granted, free of charge, to any person obtaining a copy
-    of this software and associated documentation files (the "Software"), to deal
-    in the Software without restriction, including without limitation the rights
-    to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-    copies of the Software, and to permit persons to whom the Software is
-    furnished to do so, subject to the following conditions:
+	Permission is hereby granted, free of charge, to any person obtaining a copy
+	of this software and associated documentation files (the "Software"), to deal
+	in the Software without restriction, including without limitation the rights
+	to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+	copies of the Software, and to permit persons to whom the Software is
+	furnished to do so, subject to the following conditions:
 
-    The above copyright notice and this permission notice shall be included in
-    all copies or substantial portions of the Software.
+	The above copyright notice and this permission notice shall be included in
+	all copies or substantial portions of the Software.
 
-    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-    THE SOFTWARE.
+	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+	IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+	FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+	AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+	LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+	OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+	THE SOFTWARE.
 */
 
 #ifndef SLIMEVR_PACKETS_H_
 #define SLIMEVR_PACKETS_H_
 
-#include "sensors/sensor.h"
+#include <cstdint>
 
-#define PACKET_HEARTBEAT 0
-//#define PACKET_ROTATION 1 // Deprecated
-//#define PACKET_GYRO 2 // Deprecated
-#define PACKET_HANDSHAKE 3
-#define PACKET_ACCEL 4
-//#define PACKET_MAG 5 // Deprecated
-#define PACKET_RAW_CALIBRATION_DATA 6
-#define PACKET_CALIBRATION_FINISHED 7
-#define PACKET_CONFIG 8
-//#define PACKET_RAW_MAGNETOMETER 9 // Deprecated
-#define PACKET_PING_PONG 10
-#define PACKET_SERIAL 11
-#define PACKET_BATTERY_LEVEL 12
-#define PACKET_TAP 13
-#define PACKET_ERROR 14
-#define PACKET_SENSOR_INFO 15
-//#define PACKET_ROTATION_2 16 // Deprecated
-#define PACKET_ROTATION_DATA 17
-#define PACKET_MAGNETOMETER_ACCURACY 18
-#define PACKET_SIGNAL_STRENGTH 19
-#define PACKET_TEMPERATURE 20
+#include "../consts.h"
+#include "../sensors/sensor.h"
 
-#define PACKET_INSPECTION 105 // 0x69
+enum class SendPacketType : uint8_t {
+	HeartBeat = 0,
+	//  Rotation = 1,
+	//  Gyro = 2,
+	Handshake = 3,
+	Accel = 4,
+	// Mag = 5,
+	// RawCalibrationData = 6,
+	// CalibrationFinished = 7,
+	// RawMagnetometer = 9,
+	Serial = 11,
+	BatteryLevel = 12,
+	Tap = 13,
+	Error = 14,
+	SensorInfo = 15,
+	// Rotation2 = 16,
+	RotationData = 17,
+	MagnetometerAccuracy = 18,
+	SignalStrength = 19,
+	Temperature = 20,
+	// UserAction = 21,
+	FeatureFlags = 22,
+	// RotationAcceleration = 23,
+	AcknowledgeConfigChange = 24,
+	FlexData = 26,
+	// PositionData = 27,
+	Bundle = 100,
+	Inspection = 105,
+};
 
-#define PACKET_RECEIVE_HEARTBEAT 1
-#define PACKET_RECEIVE_VIBRATE 2
-#define PACKET_RECEIVE_HANDSHAKE 3
-#define PACKET_RECEIVE_COMMAND 4
+enum class ReceivePacketType : uint8_t {
+	HeartBeat = 1,
+	Vibrate = 2,
+	Handshake = 3,
+	Command = 4,
+	Config = 8,
+	PingPong = 10,
+	SensorInfo = 15,
+	FeatureFlags = 22,
+	SetConfigFlag = 25,
+};
 
-#define PACKET_INSPECTION_PACKETTYPE_RAW_IMU_DATA 1
-#define PACKET_INSPECTION_PACKETTYPE_FUSED_IMU_DATA 2
-#define PACKET_INSPECTION_PACKETTYPE_CORRECTION_DATA 3
-#define PACKET_INSPECTION_DATATYPE_INT 1
-#define PACKET_INSPECTION_DATATYPE_FLOAT 2
+enum class InspectionPacketType : uint8_t {
+	RawImuData = 1,
+	FusedImuData = 2,
+	CorrectionData = 3,
+};
 
-namespace Network {
-    // PACKET_HEARTBEAT 0
-    void sendHeartbeat();
+enum class InspectionDataType : uint8_t {
+	Int = 1,
+	Float = 2,
+};
 
-    // PACKET_HANDSHAKE 3
-    void sendHandshake();
+// From the SH-2 interface that BNO08x use.
+enum class PacketErrorCode : uint8_t {
+	NOT_APPLICABLE = 0,
+	POWER_ON_RESET = 1,
+	INTERNAL_SYSTEM_RESET = 2,
+	WATCHDOG_TIMEOUT = 3,
+	EXTERNAL_RESET = 4,
+	OTHER = 5,
+};
 
-    // PACKET_ACCEL 4
-    void sendAccel(float* vector, uint8_t sensorId);
+#pragma pack(push, 1)
 
-    // PACKET_RAW_CALIBRATION_DATA 6
-    void sendRawCalibrationData(float* vector, uint8_t calibrationType, uint8_t sensorId);
-    void sendRawCalibrationData(int* vector, uint8_t calibrationType, uint8_t sensorId);
-
-    // PACKET_CALIBRATION_FINISHED 7
-    void sendCalibrationFinished(uint8_t calibrationType, uint8_t sensorId);
-
-    // PACKET_BATTERY_LEVEL 12
-    void sendBatteryLevel(float batteryVoltage, float batteryPercentage);
-
-    // PACKET_TAP 13
-    void sendTap(uint8_t value, uint8_t sensorId);
-
-    // PACKET_ERROR 14
-    void sendError(uint8_t reason, uint8_t sensorId);
-
-    // PACKET_SENSOR_INFO 15
-    void sendSensorInfo(Sensor * sensor);
-
-    // PACKET_ROTATION_DATA 17
-    void sendRotationData(Quat * const quaternion, uint8_t dataType, uint8_t accuracyInfo, uint8_t sensorId);
-
-    // PACKET_MAGNETOMETER_ACCURACY 18
-    void sendMagnetometerAccuracy(float accuracyInfo, uint8_t sensorId);
-
-    // PACKET_SIGNAL_STRENGTH 19
-    void sendSignalStrength(uint8_t signalStrength);
-
-    // PACKET_TEMPERATURE 20
-    void sendTemperature(float temperature, uint8_t sensorId);
-
-#if ENABLE_INSPECTION
-    void sendInspectionRawIMUData(uint8_t sensorId, int16_t rX, int16_t rY, int16_t rZ, uint8_t rA, int16_t aX, int16_t aY, int16_t aZ, uint8_t aA, int16_t mX, int16_t mY, int16_t mZ, uint8_t mA);
-    void sendInspectionRawIMUData(uint8_t sensorId, float rX, float rY, float rZ, uint8_t rA, float aX, float aY, float aZ, uint8_t aA, float mX, float mY, float mZ, uint8_t mA);
-
-    void sendInspectionFusedIMUData(uint8_t sensorId, Quat quaternion);
-
-    void sendInspectionCorrectionData(uint8_t sensorId, Quat quaternion);
-#endif
+template <typename T>
+T swapEndianness(T value) {
+	auto* bytes = reinterpret_cast<uint8_t*>(&value);
+	std::reverse(bytes, bytes + sizeof(T));
+	return value;
 }
 
-namespace DataTransfer {
-    bool beginPacket();
-    bool endPacket();
-    void sendPacketType(uint8_t type);
-    void sendPacketNumber();
+template <typename T>
+struct BigEndian {
+	BigEndian() = default;
+	explicit(false) BigEndian(T val) { value = swapEndianness(val); }
+	explicit(false) operator T() const { return swapEndianness(value); }
 
-    void sendFloat(float f);
-    void sendByte(uint8_t c);
-    void sendInt(int i);
-    void sendLong(uint64_t l);
-    void sendBytes(const uint8_t * c, size_t length);
-    void sendShortString(const char * str);
-    void sendLongString(const char * str);
+	T value{};
+};
 
-    int getWriteError();
-}
+struct AccelPacket {
+	BigEndian<float> x;
+	BigEndian<float> y;
+	BigEndian<float> z;
+	uint8_t sensorId{};
+};
 
-#endif // SLIMEVR_PACKETS_H_
+struct BatteryLevelPacket {
+	BigEndian<float> batteryVoltage;
+	BigEndian<float> batteryPercentage;
+};
+
+struct TapPacket {
+	uint8_t sensorId;
+	uint8_t value;
+};
+
+struct ErrorPacket {
+	uint8_t sensorId;
+	uint8_t error;
+};
+
+struct SensorInfoPacket {
+	uint8_t sensorId{};
+	SensorStatus sensorState{};
+	SensorTypeID sensorType{};
+	BigEndian<SlimeVR::Configuration::SensorConfigBits> sensorConfigData{};
+	bool hasCompletedRestCalibration{};
+	SensorPosition sensorPosition{};
+	SensorDataType sensorDataType{};
+	// ADD NEW FIELDS ABOVE THIS COMMENT ^^^^^^^^
+	// WARNING! Only for debug purposes and SHOULD ALWAYS BE LAST IN THE PACKET.
+	// It WILL BE REMOVED IN THE FUTURE
+	// Send TPS
+	BigEndian<float> tpsCounterAveragedTps;
+	BigEndian<float> dataCounterAveragedTps;
+};
+
+struct RotationDataPacket {
+	uint8_t sensorId{};
+	uint8_t dataType{};
+	BigEndian<float> x;
+	BigEndian<float> y;
+	BigEndian<float> z;
+	BigEndian<float> w;
+	uint8_t accuracyInfo{};
+};
+
+struct MagnetometerAccuracyPacket {
+	uint8_t sensorId{};
+	BigEndian<float> accuracyInfo;
+};
+
+struct SignalStrengthPacket {
+	uint8_t sensorId;
+	uint8_t signalStrength;
+};
+
+struct TemperaturePacket {
+	uint8_t sensorId{};
+	BigEndian<float> temperature;
+};
+
+struct AcknowledgeConfigChangePacket {
+	uint8_t sensorId{};
+	BigEndian<SensorToggles> configType;
+};
+
+struct FlexDataPacket {
+	uint8_t sensorId{};
+	BigEndian<float> flexLevel;
+};
+
+struct IntRawImuDataInspectionPacket {
+	InspectionPacketType inspectionPacketType{};
+	uint8_t sensorId{};
+	InspectionDataType inspectionDataType{};
+
+	BigEndian<uint32_t> rX;
+	BigEndian<uint32_t> rY;
+	BigEndian<uint32_t> rZ;
+	uint8_t rA{};
+
+	BigEndian<uint32_t> aX;
+	BigEndian<uint32_t> aY;
+	BigEndian<uint32_t> aZ;
+	uint8_t aA{};
+
+	BigEndian<uint32_t> mX;
+	BigEndian<uint32_t> mY;
+	BigEndian<uint32_t> mZ;
+	uint8_t mA{};
+};
+
+struct FloatRawImuDataInspectionPacket {
+	InspectionPacketType inspectionPacketType{};
+	uint8_t sensorId{};
+	InspectionDataType inspectionDataType{};
+
+	BigEndian<float> rX;
+	BigEndian<float> rY;
+	BigEndian<float> rZ;
+	uint8_t rA{};
+
+	BigEndian<float> aX;
+	BigEndian<float> aY;
+	BigEndian<float> aZ;
+	uint8_t aA{};
+
+	BigEndian<float> mX;
+	BigEndian<float> mY;
+	BigEndian<float> mZ;
+	uint8_t mA{};
+};
+
+struct SetConfigFlagPacket {
+	uint8_t sensorId{};
+	BigEndian<SensorToggles> flag;
+	bool newState{};
+};
+
+#pragma pack(pop)
+
+#endif  // SLIMEVR_PACKETS_H_
