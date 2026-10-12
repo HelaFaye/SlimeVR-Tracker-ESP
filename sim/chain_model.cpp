@@ -155,7 +155,7 @@ std::vector<uint8_t> Node::identity() const {
 	if (sensorPowered) {
 		status |= StatusSensorPowered;
 	}
-	return {IdentityMagic, ProtocolVersion, reportedId, status};
+	return {IdentityMagic, version, reportedId, status};
 }
 
 // ------------------------------------------------------------------- I2C transport
@@ -181,7 +181,7 @@ uint8_t Chain::i2cEnd() {
 		return 2;  // NACK on address
 	}
 
-	if (txAddress != baseAddress) {
+	if (!isChainAddress(txAddress)) {
 		// Traffic aimed at a chained I2C sensor. Only nodes whose SCL is ungated can
 		// hear it, so identical addresses on different nodes never collide.
 		int listening = 0;
@@ -199,7 +199,7 @@ uint8_t Chain::i2cEnd() {
 	}
 
 	for (auto& node : nodes) {
-		if (node.present) {
+		if (node.present && node.chainAddress == txAddress) {
 			node.onWrite(txBuffer, true);
 		}
 	}
@@ -208,18 +208,30 @@ uint8_t Chain::i2cEnd() {
 	return 0;
 }
 
+bool Chain::isChainAddress(uint8_t addr) const {
+	if (addr == baseAddress) {
+		return true;
+	}
+	for (const auto& node : nodes) {
+		if (node.chainAddress == addr) {
+			return true;
+		}
+	}
+	return false;
+}
+
 uint8_t Chain::i2cRequest(uint8_t addr, uint8_t len) {
 	rxBuffer.clear();
 	if (!onChainBus()) {
 		stats.offChainI2C++;
 		return 0;
 	}
-	if (addr != baseAddress) {
+	if (!isChainAddress(addr)) {
 		return 0;
 	}
 	int answering = 0;
 	for (auto& node : nodes) {
-		if (node.present && node.answersRead) {
+		if (node.present && node.chainAddress == addr && node.answersRead) {
 			rxBuffer = node.identity();
 			answering++;
 		}

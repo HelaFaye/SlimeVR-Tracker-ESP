@@ -27,6 +27,7 @@
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 #include "ATTinyCSProtocol.h"
 #include "SensorInterface.h"
@@ -56,6 +57,12 @@ public:
 		uint8_t baseAddress,
 		int8_t strobePin  // -1 => software-CS fallback
 	);
+	~ATTinyCSBus();
+
+	// Registered by address in the list of buses below; a copy would leave a stale
+	// entry.
+	ATTinyCSBus(const ATTinyCSBus&) = delete;
+	ATTinyCSBus& operator=(const ATTinyCSBus&) = delete;
 
 	bool init();
 
@@ -96,6 +103,14 @@ public:
 private:
 	bool writeFrame(ATTinyCS::Command command, uint8_t target, uint8_t value);
 
+	/// Disarm every other chain on the same I2C pins. Each chain keeps its own node
+	/// armed, so without this a gated I2C sensor on each of two chains would listen at
+	/// once, and two at the same sensor address collide.
+	void disarmOtherChainsOnThisBus();
+
+	/// Every live bus, so a chain can find the others sharing its pins.
+	static std::vector<ATTinyCSBus*>& allBuses();
+
 	uint8_t m_sclPin;
 	uint8_t m_sdaPin;
 	uint8_t m_baseAddress;
@@ -105,6 +120,11 @@ private:
 	/// any I2C failure, because acting on a stale belief here means silently talking to
 	/// the wrong sensor.
 	uint8_t m_armedTarget = 0;
+
+	/// True from the moment an arm is attempted until a disarm is known to have landed.
+	/// Wider than m_armedTarget != 0: after a failed arm, m_armedTarget is cleared but
+	/// the previously armed node may still be armed.
+	bool m_mayBeArmed = false;
 
 	/// Bit n set when node n answered the identity probe during init().
 	uint16_t m_presentNodes = 0;

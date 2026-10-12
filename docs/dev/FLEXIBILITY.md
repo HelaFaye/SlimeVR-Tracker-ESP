@@ -82,10 +82,12 @@ The whitelist has seven entries, so up to seven chains can share one I2C bus for
 sensors. Beyond that, put them on different pin pairs, or add a chain id to the frame —
 not done.
 
-Distinct addresses are not enough for **gated I2C sensors** on two chains on one bus. Each
-chain keeps its own node armed independently, so a sensor on each chain can be ungated at
-the same time; two at the same sensor address then collide. Until the host disarms the
-other chains on a shared bus, put chains carrying I2C sensors on separate pin pairs.
+Distinct addresses alone were not enough for **gated I2C sensors** on two chains on one
+bus: each chain kept its own node armed independently, so a sensor on each could be
+ungated at once. Arming a node now first disarms any other chain on the same pins
+(`ATTinyCSBus::disarmOtherChainsOnThisBus`), so one-hot holds across the bus, not just
+within a chain. That costs one extra 3-byte write whenever consecutive sensors are on
+different chains of the same bus.
 
 No shipped board uses two chains: `BOARD_SLIMEVR_C5_CHAIN_HUB` once did, with the second
 strobe on GPIO15, which the hub hardware leaves unconnected. `sim/check_board_config.py`

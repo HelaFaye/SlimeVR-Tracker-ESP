@@ -55,7 +55,7 @@ fi
 # HelaFaye/SlimeVR-Tracker-ESP-Hardware (./verify.sh there).
 run "I2C address collisions" python3 sim/i2c_address_map.py --check
 
-run "Board config (generation, chain address, C5 chain pins)" python3 sim/check_board_config.py
+run "Board config (generation, chain address, C5 pins)" python3 sim/check_board_config.py
 
 if [ -n "$CLANG_FORMAT" ]; then
   ver=$("$CLANG_FORMAT" --version | grep -oE '[0-9]+' | head -1)
