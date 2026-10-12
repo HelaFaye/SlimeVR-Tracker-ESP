@@ -29,6 +29,17 @@ class PinInterface
 {
 public:
 	virtual bool init() { return true; };
+
+	/**
+	 * Whether the hardware backing this pin actually answered.
+	 *
+	 * Always true for a pin on the MCU itself - there is nothing to be absent. Pins that
+	 * live on a remote device (an I/O expander, an ATtiny chip-select node) override this
+	 * so callers can distinguish "not wired up" from "wired up and reading zero", without
+	 * having to guess from bus traffic.
+	 */
+	[[nodiscard]] virtual bool isPresent() const { return true; }
+
 	virtual int digitalRead() = 0;
 	virtual void pinMode(uint8_t mode) = 0;
 	virtual void digitalWrite(uint8_t val) = 0;

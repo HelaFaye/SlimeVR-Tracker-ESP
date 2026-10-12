@@ -66,6 +66,18 @@ void WiFiNetwork::setUp() {
 	wifiHandlerLogger.info("Setting up WiFi");
 	WiFi.persistent(true);
 	WiFi.mode(WIFI_STA);
+
+#if defined(ESP32C5)
+	// Dual-band part. The band must be selected explicitly between bringing STA up and
+	// the first WiFi.begin(): the default AUTO mode faults when the radio starts.
+	// WIFI_TRACKER_BAND_MODE is defined in globals.h and defaults to 2.4 GHz.
+	if (!WiFi.setBandMode(WIFI_TRACKER_BAND_MODE)) {
+		wifiHandlerLogger.warn(
+			"Failed to set WiFi band mode. If the radio faults on start, this is why."
+		);
+	}
+#endif
+
 	WiFi.hostname("SlimeVR FBT Tracker");
 	wifiHandlerLogger.info(
 		"Loaded credentials for SSID '%s' and pass length %d",

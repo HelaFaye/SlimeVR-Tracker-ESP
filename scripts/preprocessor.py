@@ -78,6 +78,159 @@ def format_value(val: Any, typ: str, key: str = "<unknown>") -> str:
     return result
 
 
+# Kept byte-for-byte as the pre-configurable-SPI default so boards that predate the
+# "SPI" config block (notably BOARD_SLIMEVR_V1_2) generate exactly what they did before.
+LEGACY_SPI_BUS = "DIRECT_SPI(24'000'000, MSBFIRST, SPI_MODE3)"
+
+
+# The chain address is defined once, in ATTinyCSProtocol.h, which the node firmware also
+# builds against. Read it from there: separate copies here, in globals.h and in the node
+# build once disagreed (0x30 against 0x13), and a hub built that way finds no nodes.
+PROTOCOL_HEADER = Path("./src/sensorinterface/ATTinyCSProtocol.h")
+_chain_protocol_cache: Optional[tuple] = None
+
+
+def _chain_protocol() -> tuple:
+    """(default address, whitelist) as declared in ATTinyCSProtocol.h."""
+    global _chain_protocol_cache
+    if _chain_protocol_cache is None:
+        text = PROTOCOL_HEADER.read_text()
+        default = re.search(r"DefaultBaseAddress\s*=\s*(0x[0-9A-Fa-f]+)", text)
+        whitelist = re.search(r"AddressWhitelist\[\]\s*=\s*\{([^}]*)\}", text)
+        if not default or not whitelist:
+            raise ValueError(f"Chain address constants not found in {PROTOCOL_HEADER}")
+        _chain_protocol_cache = (
+            int(default.group(1), 16),
+            [int(a, 16) for a in whitelist.group(1).split(",") if a.strip()],
+        )
+    return _chain_protocol_cache
+
+
+def _chain_address(chain: dict) -> int:
+    """A chain's I2C address, defaulted and checked against the protocol whitelist."""
+    default, whitelist = _chain_protocol()
+    addr = chain.get('baseAddress', default)
+    if addr not in whitelist:
+        raise ValueError(
+            f"chain address {addr:#04x} is not in ATTinyCS::AddressWhitelist "
+            f"({', '.join(f'{a:#04x}' for a in whitelist)}). Nodes listen on "
+            f"{default:#04x} unless built with -DBASE_ADDRESS; pick a whitelisted "
+            "address and build the nodes to match."
+        )
+    return addr
+
+
+def _format_chip_select(cs: Any, chains: Optional[dict] = None) -> str:
+    """A chip select is either a host GPIO (a plain pin string, the original form) or an
+    object describing a remote ATtiny node on an RJ45 sensor chain."""
+    if cs is None:
+        raise ValueError("SPI sensor is missing a 'cs' entry")
+
+    if not isinstance(cs, dict):
+        return f"DIRECT_PIN({format_value(cs, 'pin')})"
+
+    cs_type = cs.get('type', 'direct')
+
+    if cs_type == 'direct':
+        return f"DIRECT_PIN({format_value(cs.get('pin'), 'pin')})"
+
+    if cs_type == 'attiny':
+        node = cs.get('node')
+        if node is None:
+            raise ValueError("attiny chip select is missing 'node'")
+
+        # A named chain resolves to the explicit form, which carries its own pins and
+        # address rather than falling back to the REMOTE_CS_* defaults.
+        chain = cs.get('chain')
+        if chain:
+            c = chains[chain]
+            channel = cs.get('channel', 0)
+            return (
+                f"ATTINY_CS_ON({format_value(c.get('scl'), 'pin')}, "
+                f"{format_value(c.get('sda'), 'pin')}, "
+                f"{format_value(_chain_address(c), 'number')}, "
+                f"{format_value(c.get('strobe', -1), 'number')}, "
+                f"{format_value(node, 'number')}, "
+                f"{format_value(channel, 'number')})"
+            )
+
+        # A node may own several chip selects. Channel 0 is the common case and keeps
+        # the shorter descriptor, which is also what a protocol v1 node understands.
+        channel = cs.get('channel', 0)
+        if channel:
+            return (
+                f"ATTINY_CS_CH({format_value(node, 'number')}, "
+                f"{format_value(channel, 'number')})"
+            )
+        return f"ATTINY_CS({format_value(node, 'number')})"
+
+    raise ValueError(f"Unknown chip select type: {cs_type!r}")
+
+
+def _spi_buses(values: dict) -> dict:
+    """Board SPI config, normalised to a name -> settings map.
+
+    Accepts a single object (the common case, name "default") or a map of named buses,
+    so a board with two SPI peripherals can declare both. Sensors pick one with "bus".
+    """
+    spi = values.get('SPI')
+    if not spi:
+        return {'default': None}
+    if any(k in spi for k in ('sck', 'miso', 'mosi', 'clock', 'bitOrder', 'mode')):
+        return {'default': spi}
+    return spi
+
+
+def _chains(values: dict) -> dict:
+    """Chain config, normalised the same way. Sensors pick one with "chain"."""
+    chains = values.get('REMOTE_CS')
+    if not chains:
+        return {}
+    if any(k in chains for k in ('scl', 'sda', 'strobe', 'baseAddress')):
+        return {'default': chains}
+
+    # Chains sharing an I2C bus must not share an address. They all hear each other's
+    # frames, so an ARM meant for one would arm nodes on the other: differing strobes
+    # keep chip selects safe, but a gated I2C sensor on the unintended chain would
+    # ungate and answer. Invisible at runtime, so refuse it here.
+    seen = {}
+    for name, c in chains.items():
+        bus = (str(c.get('scl')), str(c.get('sda')))
+        addr = _chain_address(c)
+        key = (bus, addr)
+        if key in seen:
+            raise ValueError(
+                f"chains {seen[key]!r} and {name!r} share I2C bus "
+                f"SCL {bus[0]}/SDA {bus[1]} and address {addr:#04x}; "
+                "give each chain its own address from ATTinyCS::AddressWhitelist"
+            )
+        seen[key] = name
+    return chains
+
+
+def _format_spi_bus(spi: Optional[dict]) -> str:
+    """Build the bus descriptor for the SENSOR_DESC_ENTRY list."""
+    if not spi:
+        return LEGACY_SPI_BUS
+
+    clock = spi.get('clock', 4000000)
+    bit_order = spi.get('bitOrder', 'MSBFIRST')
+    mode = spi.get('mode', 'SPI_MODE3')
+
+    sck = spi.get('sck', -1)
+    miso = spi.get('miso', -1)
+    mosi = spi.get('mosi', -1)
+
+    if sck == -1 and miso == -1 and mosi == -1:
+        return f"DIRECT_SPI({format_value(clock, 'number')}, {format_value(bit_order, 'raw')}, {format_value(mode, 'raw')})"
+
+    return (
+        f"SPI_BUS({format_value(clock, 'number')}, {format_value(bit_order, 'raw')}, "
+        f"{format_value(mode, 'raw')}, {format_value(sck, 'pin')}, "
+        f"{format_value(miso, 'pin')}, {format_value(mosi, 'pin')})"
+    )
+
+
 def _build_board_flags(defaults: dict, board_name: str) -> List[str]:
     """Construct list of -D flags for one board."""
     if "defaults" not in defaults:
@@ -102,11 +255,55 @@ def _build_board_flags(defaults: dict, board_name: str) -> List[str]:
     if sensors:
         sensor_list = []
 
+        spi_buses = _spi_buses(values)
+        chains = _chains(values)
+        remote_cs = chains.get('default')
+
         add('PIN_IMU_SDA', 255, 'pin') # FIXME fix the I2C Scanner so it use the sensor list and not be called when no I2C sensor
         add('PIN_IMU_SCL', 255, 'pin')
         add('PIN_IMU_INT_2', 255, 'pin') # FIXME: fix the CONFIG serial command so it use the sensor list
 
+        # More than the historic two sensors is legal (the glove already does ten), but
+        # MAX_SENSORS_COUNT sizes the per-sensor ack arrays in connection.h, so it has to
+        # be raised in step with the descriptor list.
+        if len(sensors) > 2:
+            add('MAX_SENSORS_COUNT', len(sensors), 'number')
+
+        if remote_cs:
+            add('REMOTE_CS_SCL', remote_cs.get('scl'), 'pin')
+            add('REMOTE_CS_SDA', remote_cs.get('sda'), 'pin')
+            add('REMOTE_CS_BASE_ADDR', _chain_address(remote_cs), 'number')
+            # -1 means "no strobe conductor", i.e. drive CS over I2C instead. Slow.
+            add('REMOTE_CS_STROBE', remote_cs.get('strobe', -1), 'number')
+
         for index, sensor in enumerate(sensors):
+            if sensor.get('protocol') == 'I2C' and 'node' in sensor:
+                # An I2C sensor on a chain node: the node gates its SCL, so its address
+                # need not be unique across the chain. See DEC-016. Keyed on "node", not
+                # "chain": a board with one unnamed chain never names it.
+                c = chains[sensor.get('chain', 'default')]
+                # Same shape as a local I2C entry - (imu, address, rotation, interface,
+                # optional, int, extra) - with the chain interface in place of DIRECT_WIRE.
+                # This once emitted the interface in the address slot and dropped the
+                # address, which cannot compile; sim/check_desc_list.py now type-checks
+                # every generated entry against sensorDescEntry's signature.
+                params = [
+                    format_value(sensor.get('imu'), 'raw'),
+                    format_value(sensor.get('address', 'PRIMARY_IMU_ADDRESS_ONE'), 'number'),
+                    format_value(sensor.get('rotation'), 'raw'),
+                    f"I2SPI_WIRE_ON({format_value(c.get('scl'), 'pin')}, "
+                    f"{format_value(c.get('sda'), 'pin')}, "
+                    f"{format_value(_chain_address(c), 'number')}, "
+                    f"{format_value(c.get('strobe', -1), 'number')}, "
+                    f"{format_value(sensor.get('node'), 'number')}, "
+                    f"{format_value(sensor.get('channel', 0), 'number')})",
+                    'false' if index == 0 else 'true',
+                    f"DIRECT_PIN({format_value(sensor.get('int', 255), 'pin')})",
+                    '0'
+                ]
+                sensor_list.append(f"SENSOR_DESC_ENTRY({','.join(params)})")
+                continue
+
             if sensor.get('protocol') == 'I2C':
                 params = [
                     format_value(sensor.get('imu'), 'raw'),
@@ -124,19 +321,28 @@ def _build_board_flags(defaults: dict, board_name: str) -> List[str]:
             if sensor.get('protocol') == 'SPI':
                 params = [
                     format_value(sensor.get('imu'), 'raw'),
-                    f"DIRECT_PIN({format_value(sensor.get('cs'), 'pin')})",
+                    _format_chip_select(sensor.get('cs'), chains),
                     format_value(sensor.get('rotation'), 'raw'),
-                    "DIRECT_SPI(24'000'000, MSBFIRST, SPI_MODE3)",
+                    _format_spi_bus(spi_buses[sensor.get('bus', 'default')]),
                     'false' if index == 0 else 'true',
                     f"DIRECT_PIN({format_value(sensor.get('int', 255), 'pin')})",
                     '0'
                 ]
                 sensor_list.append(f"SENSOR_DESC_ENTRY({','.join(params)})")
 
+            # serialcommands.cpp prints PIN_IMU_INT unconditionally, and add() skips
+            # None, so a sensor without an `int` produced a config that fails to build.
             if index == 0: # FIXME: fix the CONFIG serial command so it use the sensor list
-                add('PIN_IMU_INT', sensor.get('int'), 'pin')
+                add('PIN_IMU_INT', sensor.get('int', 255), 'pin')
             elif index == 1:
-                add('PIN_IMU_INT_2', sensor.get('int'), 'pin')
+                add('PIN_IMU_INT_2', sensor.get('int', 255), 'pin')
+        # The I2C scanner and the CONFIG serial command still read these globals. On a
+        # chain-only board there is no local I2C sensor to take them from, so point them
+        # at the node chain's bus rather than leaving them at 255.
+        if remote_cs and args.get('PIN_IMU_SDA', {}).get('value') == 255:
+            add('PIN_IMU_SDA', remote_cs.get('sda'), 'pin')
+            add('PIN_IMU_SCL', remote_cs.get('scl'), 'pin')
+
         add('SENSOR_DESC_LIST', f"'{' '.join(sensor_list)}'", 'raw')
 
 
