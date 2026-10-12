@@ -57,6 +57,12 @@ run "I2C address collisions" python3 sim/i2c_address_map.py --check
 
 run "Board config (generation, chain address, C5 pins)" python3 sim/check_board_config.py
 
+if have "$CXX"; then
+  run "Sensor descriptor lists, type-checked against sensorDescEntry" python3 sim/check_desc_list.py
+else
+  skip "Sensor descriptor lists" "no $CXX"
+fi
+
 if [ -n "$CLANG_FORMAT" ]; then
   ver=$("$CLANG_FORMAT" --version | grep -oE '[0-9]+' | head -1)
   fmt_files=(src/sensorinterface/*.cpp src/sensorinterface/*.h

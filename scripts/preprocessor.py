@@ -277,19 +277,26 @@ def _build_board_flags(defaults: dict, board_name: str) -> List[str]:
             add('REMOTE_CS_STROBE', remote_cs.get('strobe', -1), 'number')
 
         for index, sensor in enumerate(sensors):
-            if sensor.get('protocol') == 'I2C' and sensor.get('chain'):
+            if sensor.get('protocol') == 'I2C' and 'node' in sensor:
                 # An I2C sensor on a chain node: the node gates its SCL, so its address
-                # need not be unique across the chain. See DEC-016.
-                c = chains[sensor['chain']]
+                # need not be unique across the chain. See DEC-016. Keyed on "node", not
+                # "chain": a board with one unnamed chain never names it.
+                c = chains[sensor.get('chain', 'default')]
+                # Same shape as a local I2C entry - (imu, address, rotation, interface,
+                # optional, int, extra) - with the chain interface in place of DIRECT_WIRE.
+                # This once emitted the interface in the address slot and dropped the
+                # address, which cannot compile; sim/check_desc_list.py now type-checks
+                # every generated entry against sensorDescEntry's signature.
                 params = [
                     format_value(sensor.get('imu'), 'raw'),
+                    format_value(sensor.get('address', 'PRIMARY_IMU_ADDRESS_ONE'), 'number'),
+                    format_value(sensor.get('rotation'), 'raw'),
                     f"I2SPI_WIRE_ON({format_value(c.get('scl'), 'pin')}, "
                     f"{format_value(c.get('sda'), 'pin')}, "
                     f"{format_value(_chain_address(c), 'number')}, "
                     f"{format_value(c.get('strobe', -1), 'number')}, "
                     f"{format_value(sensor.get('node'), 'number')}, "
                     f"{format_value(sensor.get('channel', 0), 'number')})",
-                    format_value(sensor.get('rotation'), 'raw'),
                     'false' if index == 0 else 'true',
                     f"DIRECT_PIN({format_value(sensor.get('int', 255), 'pin')})",
                     '0'

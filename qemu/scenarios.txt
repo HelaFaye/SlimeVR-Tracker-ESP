@@ -1,0 +1,5 @@
+# env                        scenario (optional; qemu/scenarios/<name>.json)
+BOARD_WROOM32
+BOARD_ESP32C3DEVKITM1
+BOARD_ESP32S3_SUPERMINI
+BOARD_ESP32S3_SUPERMINI      chain

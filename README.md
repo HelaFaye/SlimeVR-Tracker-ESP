@@ -7,7 +7,9 @@ Requires [SlimeVR Server](https://github.com/SlimeVR/SlimeVR-Server) to work wit
 ## Related repositories (I2SPI fork)
 
 This fork adds ESP32-C5 support and I2SPI, which chains several SPI or I2C sensors over
-one RJ45 cable (see [`docs/I2SPI.md`](docs/I2SPI.md)). The work is split across three repos:
+one RJ45 cable. [`docs/I2SPI.md`](docs/I2SPI.md) is the specification and the standard for
+future hardware. `./VERIFY.sh` runs every host-side check, and `qemu/run.sh` boots builds
+in Espressif's QEMU. The work is split across three repos:
 
 | Repo | Contents |
 |---|---|

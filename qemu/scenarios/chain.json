@@ -1,0 +1,11 @@
+{
+	"SPI": { "sck": "12", "miso": "13", "mosi": "11", "clock": 4000000, "bitOrder": "MSBFIRST", "mode": "SPI_MODE3" },
+	"REMOTE_CS": { "scl": "5", "sda": "4", "strobe": "6" },
+	"SENSORS": [
+		{ "protocol": "SPI", "imu": "IMU_ICM45686", "rotation": "DEG_0", "cs": { "type": "direct", "pin": "10" } },
+		{ "protocol": "SPI", "imu": "IMU_ICM45686", "rotation": "DEG_0", "cs": { "type": "attiny", "node": 1 } },
+		{ "protocol": "SPI", "imu": "IMU_ICM45686", "rotation": "DEG_0", "cs": { "type": "attiny", "node": 2 } }
+	],
+	"BATTERY": { "type": "BAT_EXTERNAL", "r1": 100, "r2": 220, "shieldR": 180, "pin": "1" },
+	"LED": { "LED_PIN": "48", "LED_INVERTED": false }
+}

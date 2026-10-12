@@ -1,0 +1,4 @@
+# The I2SPI host on an emulated S3: no I2C devices exist, so the chain must enumerate
+# empty and degrade to "sensor not found", not crash or hang.
+SlimeVR v\S* starting up
+No ATtiny CS nodes answered
