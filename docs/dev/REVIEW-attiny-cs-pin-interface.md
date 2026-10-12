@@ -1,5 +1,9 @@
 # Review: `ATTinyCSPinInterface.{h,cpp}` and the `SPIImpl` changes
 
+> **Historical.** This review describes protocol v2 (a shared chain address at `0x30` plus
+> per-node unicast addresses). The firmware now speaks v3, one address at `0x13`; see
+> `docs/I2SPI.md` §3–4 and DEC-015. File names below are as they were at review time.
+
 Reviewed at commit `a94c1e9` plus the uncommitted working-tree changes.
 
 **Status: all findings resolved.** See the "Resolution" section at the end for what was

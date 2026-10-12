@@ -316,6 +316,10 @@ void scenarioStagedPowerUp() {
 		g_chain.stats.delayMillis == 4 * SlimeVR::ATTinyCS::SensorPowerOnSettleMillis,
 		"one settle delay per powered sensor"
 	);
+	check(
+		g_chain.stats.delayMicros >= SlimeVR::ATTinyCS::SensorPowerOffHoldMicros,
+		"power-off hold observed before sensors come back up"
+	);
 
 	SlimeVR::DirectSPIInterface
 		spi(&SPI, SPISettings(4000000, MSBFIRST, SPI_MODE3), 10, 11, 12);
