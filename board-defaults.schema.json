@@ -72,6 +72,22 @@
 			"required": ["protocol", "imu", "sda", "scl"]
 		},
 
+		"I2C_CHAIN_IMU": {
+			"type": "object",
+			"description": "I2C IMU on an I2SPI chain node. The node gates the sensor's SCL, so identical parts at the same address can sit on different nodes (docs/I2SPI.md, DEC-016)",
+			"properties": {
+				"protocol": { "const": "I2C" },
+				"imu": { "$ref": "#/$defs/IMU_TYPE" },
+				"node": { "type": "integer", "minimum": 1, "maximum": 15, "description": "Node id, must match the -DNODE_ID the node was flashed with" },
+				"channel": { "type": "integer", "minimum": 0, "maximum": 15, "description": "Gated channel on that node, defaults to 0; must be in the node's I2C_CHANNELS" },
+				"chain": { "type": "string", "description": "Named chain from REMOTE_CS. Omit when there is only one" },
+				"address": { "type": "number", "description": "IMU address; need not be unique across nodes" },
+				"int": { "$ref": "#/$defs/pin", "description": "INT Pin" },
+				"rotation": { "$ref": "#/$defs/IMU_ROTATION", "description": "IMU Rotation" }
+			},
+			"required": ["protocol", "imu", "node"],
+			"not": { "anyOf": [{ "required": ["sda"] }, { "required": ["scl"] }] }
+		},
 		"SPI_IMU": {
 			"type": "object",
 			"description": "SPI Imu",
@@ -155,7 +171,7 @@
 
 		"REMOTE_CS": {
 			"type": "object",
-			"description": "ATtiny chip-select node chain (see docs/dev/ATTINY-CS-PROTOCOL.md)",
+			"description": "ATtiny chip-select node chain (see docs/I2SPI.md)",
 			"properties": {
 				"scl": { "$ref": "#/$defs/pin", "description": "Chain I2C SCL Pin" },
 				"sda": { "$ref": "#/$defs/pin", "description": "Chain I2C SDA Pin" },
@@ -180,6 +196,7 @@
 			},
 			"oneOf": [
 				{ "$ref": "#/$defs/I2C_IMU" },
+				{ "$ref": "#/$defs/I2C_CHAIN_IMU" },
 				{ "$ref": "#/$defs/SPI_IMU" }
 			],
 			"required": ["protocol"]

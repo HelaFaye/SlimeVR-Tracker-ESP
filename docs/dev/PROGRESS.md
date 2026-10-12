@@ -4,6 +4,51 @@ Newest first. Each entry says what changed, what was verified, and what is still
 
 ---
 
+## 2026-10-12b — I2SPI spec, chained I2C fix, QEMU harness, upstream survey, E22 analysis
+
+**`docs/I2SPI.md` is now the normative v3 specification**, written to be the standard for
+future hardware:
+
+- physical layer and electrical rules;
+- node hardware, including gating equations for SPI and I2C channels;
+- addressing, every frame and read;
+- node and host behaviour as MUST/SHOULD;
+- timing, several chains, versioning and opcode allocation;
+- a conformance table mapping each requirement to the test that checks it;
+- known open questions, and a design checklist.
+
+`ATTINY-CS-PROTOCOL.md` (v2) already pointed at it.
+
+**Chained I2C sensors could not be configured or built.** The schema had no way to say "I2C
+sensor on node N", and the generator emitted `(imu, I2SPI_WIRE_ON(...), rotation, ...)`:
+interface in the address slot, `bool` in the interface slot, address dropped. Any such
+board would have failed to compile. The simulator never saw it because it builds the
+interfaces directly. Fixed in both. **`sim/check_desc_list.py`** now type-checks every
+board's generated sensor list, plus two synthetic boards using every chain form, against
+`sensorDescEntry`'s real signature with host g++. It fails on the old generator, and runs
+in `VERIFY.sh`.
+
+**QEMU.** `qemu/run.sh` builds a board, merges a flash image and boots it in Espressif's
+QEMU, checking for one clean boot and no crash. A `chain` scenario boots the I2SPI host
+code on an emulated S3 and expects it to enumerate an empty chain gracefully. Espressif's
+QEMU has no C5 machine and no Wi-Fi, I2C or SPI peripherals, so this is boot and
+degradation coverage only. Not yet run: PlatformIO's registry is blocked here.
+
+**Upstream survey** (`UPSTREAM-OVERLAP.md`):
+
+- open PR #539 duplicates our SPI-pin work;
+- open PR #465 already fixes the magnetometer write bug;
+- open PR #534's `CommunicationStrategy` is where any new transport belongs;
+- mitzey234's ESP-NOW tracker and S3 gateway is the starting point for a C5 hub.
+
+The C5 port and I2SPI have no equivalent upstream or in any active fork.
+
+**E22** (`E22-AND-C5-HUB.md`): a SoftMAC Wi-Fi 6E co-processor with a Linux mac80211
+driver, attached by PCIe (SDIO not yet). None of the tracker MCUs can host it today. A C5
+makes a good single-channel hub; concurrent dual band needs a second ESP radio, not an E22.
+
+---
+
 ## 2026-10-12 — The rest of the audit: one-hot across chains, failed arms, old nodes
 
 Each was reproduced in the sim first; the three new scenarios failed 7 checks before the

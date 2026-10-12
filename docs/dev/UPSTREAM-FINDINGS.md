@@ -35,6 +35,13 @@ Affects any tracker pairing an ICM-456xx with a magnetometer.
 *Found by:* reading `writeAux` while wiring up `writeByte`, then confirmed against the
 datasheet.
 
+**Already known upstream, as it turns out.** Checked 2026-10-12: upstream's own
+`mag-and-spi` branch (April 2025) had the correct `0b1'0'00'0001`, and **open PR #465 "Mag
+Support (Continuation)"** (gorbit99) rewrites `writeAux` correctly: a 2-byte write with the
+`00` write type, plus a status check. So `main`'s version is a regression introduced when
+that work landed in pieces. **Report this as "please land #465", not as a new bug.** Our
+local fix should be dropped in favour of #465 when rebasing onto it.
+
 ---
 
 ## 2. `byteCompare()` is not a strict weak ordering (severity: undefined behaviour)
@@ -95,7 +102,8 @@ Latent rather than active — every board in `board-defaults.json` happens to de
 
 ## Reporting notes
 
-1, 2 and 3 are independent of the I2SPI work and can be cherry-picked. 4 comes with the
+1 is already fixed in open PR #465 (see above); point at that rather than filing it. 2
+and 3 are independent of the I2SPI work and can be cherry-picked. 4 comes with the
 schema change that made it reachable, but the one-line generator fix stands alone.
 
 None of these have been verified on hardware. 1 is confirmed against the datasheet, 2 and
