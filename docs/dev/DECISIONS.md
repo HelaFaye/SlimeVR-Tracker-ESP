@@ -7,9 +7,14 @@ rejected, and what would make us revisit it.
 
 ## DEC-001 — Use the pioarduino platform fork for ESP32-C5, not `espressif32 @ 6.7.0`
 
-**Decision.** The `BOARD_ESP32C5_DEVKITC1` env uses
-`https://github.com/pioarduino/platform-espressif32/releases/download/stable/platform-espressif32.zip`
+**Decision.** The ESP32-C5 envs use
+`https://github.com/pioarduino/platform-espressif32/releases/download/55.03.312-1/platform-espressif32.zip`
 with `board = esp32-c5-devkitc-1`.
+
+*Amended 2026-10-12:* originally the moving `.../download/stable/...` URL, which made builds
+unreproducible: the same commit could build against a different core next month. Pinned to
+`55.03.312-1` (Arduino-ESP32 3.3.12), which is what `stable` resolved to at the time, so
+the pin changed nothing but the reproducibility. Bump it deliberately.
 
 **Why.** The C5 needs Arduino-ESP32 3.3.x / ESP-IDF 5.5.x. Official
 `platformio/platform-espressif32` has historically lagged badly on new SoCs, and 6.7.0 —
@@ -214,6 +219,10 @@ inconsistent, and general call collides with the reset/programming semantics som
 attach to it. A normal 7-bit address that every node listens to alongside its own unicast
 address is boring and portable. Unicast addresses remain for identify/diagnostics.
 
+> *Partly superseded by DEC-015.* The broadcast one-hot arm stands. The per-node unicast
+> addresses are gone: v3 puts the whole chain on one address and carries the target in
+> every frame, and identify selects which node answers the next read.
+
 **Revisit when.** A chain needs more than 127 nodes (it will not).
 
 ---
@@ -344,6 +353,10 @@ id in its low four bits anyway, so v2 packs `(nodeId << 4) | channel` and loses 
 A v1 node ignores the channel nibble and still works as a single-channel node, so the
 change is backward compatible in the direction that matters. The host warns when it probes
 a v1 node so nobody wires a second sensor to one and wonders why.
+
+> *Superseded on compatibility by DEC-015.* v3 is not wire-compatible with v1 or v2, and
+> the host now refuses any node not reporting v3. The channel nibble and the packed target
+> byte carry over unchanged.
 
 **Constraint accepted.** Multi-channel needs one gated output per channel, and an 8-pin
 tinyAVR has exactly one usable CCL output. So multi-channel implies the `EXTERNAL_CS_GATE`

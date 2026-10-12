@@ -102,6 +102,12 @@ bool ATTinyCSBus::init() {
 	// MISO. Belt and braces in case a node was left powered by a previous run.
 	setAllSensorPower(false);
 
+	// A sensor left powered by a previous run is being power-cycled here, and the
+	// QMC6309 only power-on-resets again after its supply has sat below 0.2 V for a
+	// while. Without the hold, the probe loop below is the only gap, and it shrinks to
+	// nothing on an empty chain.
+	delayMicroseconds(SensorPowerOffHoldMicros);
+
 	m_presentNodes = 0;
 	uint8_t found = 0;
 	for (uint8_t node = MinNodeId; node <= MaxNodeId; node++) {

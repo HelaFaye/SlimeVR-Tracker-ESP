@@ -121,7 +121,8 @@ constexpr uint16_t ArmSettleMicros = 2;
 constexpr uint16_t SensorPowerOnSettleMillis = 15;
 
 /// The QMC6309 needs its supply below SDV (0.2 V) for at least PINT before it will
-/// power-on-reset again. Enforced when power-cycling a node's sensors.
+/// power-on-reset again. Enforced by ATTinyCSBus::init(), the one place sensors are
+/// switched off and back on.
 constexpr uint16_t SensorPowerOffHoldMicros = 100;
 
 /// Sensors power up gated OFF so the host can bring them online one at a time. See
