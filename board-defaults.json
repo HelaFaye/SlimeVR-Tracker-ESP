@@ -668,8 +668,8 @@
 			"values": {
 				"SPI": {
 					"sck": "10",
-					"miso": "11",
-					"mosi": "12",
+					"miso": "9",
+					"mosi": "8",
 					"clock": 4000000,
 					"bitOrder": "MSBFIRST",
 					"mode": "SPI_MODE3"

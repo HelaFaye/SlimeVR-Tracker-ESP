@@ -24,11 +24,16 @@ private:
 	uint8_t dataByte = 1;
 };
 
-/// Model of one ATtiny chip-select node, implementing ATTinyCSProtocol.h independently of
-/// the node firmware so the two can be checked against each other.
+/// Model of one ATtiny chip-select node, implementing ATTinyCSProtocol.h independently
+/// of the node firmware so the two can be checked against each other.
 struct Node {
 	uint8_t id = 0;
 	uint8_t reportedId = 0;  // set differently from id to simulate a mis-flashed node
+	uint8_t version
+		= SlimeVR::ATTinyCS::ProtocolVersion;  // older to simulate stale firmware
+	/// The I2C address this node listens on. Nodes on a second chain sharing the bus
+	/// get a different one.
+	uint8_t chainAddress = SlimeVR::ATTinyCS::DefaultBaseAddress;
 	bool present = true;
 	uint8_t channels = 1;
 
@@ -105,6 +110,7 @@ struct Chain {
 	void i2cBegin(uint8_t addr);
 	uint8_t i2cEnd();
 	uint8_t i2cRequest(uint8_t addr, uint8_t len);
+	[[nodiscard]] bool isChainAddress(uint8_t addr) const;
 	uint8_t spiTransfer(uint8_t out);
 
 	void checkOneHot(const char* where);

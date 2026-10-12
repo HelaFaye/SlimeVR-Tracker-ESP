@@ -428,6 +428,96 @@ void scenarioChainedI2CBesideLocalI2C() {
 	check(g_chain.failures == 0, "no bus fight");
 }
 
+void scenarioOlderProtocolNodeIsRefused() {
+	std::printf("\n== Node running an older protocol version ==\n");
+	resetChain(2);
+	g_chain.nodes[1].version = 0x02;
+
+	SlimeVR::ATTinyCSBus bus(4, 5, SlimeVR::ATTinyCS::DefaultBaseAddress, 6);
+	bus.init();
+	check(bus.isNodePresent(1), "current node is present");
+	check(
+		!bus.isNodePresent(2),
+		"v2 node is refused rather than driven with v3 frames"
+	);
+	check(!g_chain.nodes[1].sensorPowered, "refused node's sensor is never powered");
+}
+
+void scenarioFailedArmLeavesNoWireSensorListening() {
+	std::printf("\n== Failed arm with I2C sensors on the chain ==\n");
+	resetChain(2);
+	for (auto& n : g_chain.nodes) {
+		n.hasWireSensor = true;
+		n.wireAddress = 0x68;
+	}
+
+	SlimeVR::ATTinyCSBus bus(4, 5, SlimeVR::ATTinyCS::DefaultBaseAddress, 6);
+	bus.init();
+	SlimeVR::ATTinyCSWireInterface first(&bus, 1, 0);
+	SlimeVR::ATTinyCSWireInterface second(&bus, 2, 0);
+
+	first.swapIn();
+	Wire.beginTransmission(0x68);
+	Wire.write(0x00);
+	check(Wire.endTransmission() == 0, "node 1's sensor reached");
+
+	// The arm for node 2 is lost. Node 1 heard nothing either, so unless the host acts
+	// it is still ungated, and the next transaction - meant for node 2 - reaches
+	// node 1.
+	g_chain.failNextWrite = true;
+	second.swapIn();
+	g_chain.stats.reset();
+	Wire.beginTransmission(0x68);
+	Wire.write(0x00);
+	const uint8_t result = Wire.endTransmission();
+	check(g_chain.stats.wireSensorWrites == 0, "no sensor answers after a failed arm");
+	check(result != 0, "the transaction fails visibly instead of reaching node 1");
+	check(!g_chain.nodes[0].armed, "node 1 was disarmed");
+}
+
+void scenarioTwoChainsShareOneBus() {
+	std::printf("\n== Two chains on one I2C bus, I2C sensors at the same address ==\n");
+	resetChain(2);
+	// Node 1 on each chain; the second chain listens on a different whitelisted
+	// address.
+	g_chain.nodes[1].id = 1;
+	g_chain.nodes[1].reportedId = 1;
+	g_chain.nodes[1].chainAddress = 0x12;
+	for (auto& n : g_chain.nodes) {
+		n.hasWireSensor = true;
+		n.wireAddress = 0x68;
+	}
+
+	SlimeVR::ATTinyCSBus legs(4, 5, SlimeVR::ATTinyCS::DefaultBaseAddress, 6);
+	SlimeVR::ATTinyCSBus arms(4, 5, 0x12, 7);
+	legs.init();
+	arms.init();
+	SlimeVR::ATTinyCSWireInterface leg(&legs, 1, 0);
+	SlimeVR::ATTinyCSWireInterface arm(&arms, 1, 0);
+
+	g_chain.stats.reset();
+	int reached = 0;
+	for (int cycle = 0; cycle < 3; cycle++) {
+		for (auto* w : {&leg, &arm}) {
+			w->swapIn();
+			Wire.beginTransmission(0x68);
+			Wire.write(0x00);
+			if (Wire.endTransmission() == 0) {
+				reached++;
+			}
+		}
+	}
+	check(reached == 6, "each chain's sensor reached on every cycle");
+	check(
+		g_chain.stats.wireSensorWrites == 6,
+		"every transaction reached exactly one sensor"
+	);
+	check(
+		g_chain.failures == 0,
+		"arming one chain disarms the other; no two sensors listen at once"
+	);
+}
+
 void scenarioMisflashedNode() {
 	std::printf("\n== Node flashed with the wrong id ==\n");
 	resetChain(2);
@@ -455,6 +545,9 @@ int main() {
 	scenarioNodeRefusesPower();
 	scenarioIdenticalI2CSensors();
 	scenarioChainedI2CBesideLocalI2C();
+	scenarioOlderProtocolNodeIsRefused();
+	scenarioFailedArmLeavesNoWireSensorListening();
+	scenarioTwoChainsShareOneBus();
 	scenarioMisflashedNode();
 
 	std::printf("\n%d checks, %d failed\n", checks, failed);

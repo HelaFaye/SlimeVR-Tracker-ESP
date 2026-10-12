@@ -4,6 +4,35 @@ Newest first. Each entry says what changed, what was verified, and what is still
 
 ---
 
+## 2026-10-12 — The rest of the audit: one-hot across chains, failed arms, old nodes
+
+Each was reproduced in the sim first; the three new scenarios failed 7 checks before the
+fixes and pass after. The model gained what it needed to see them: nodes can listen on
+different chain addresses on one bus, and can report an older protocol version.
+
+**Two chains on one I2C bus could both have a sensor listening.** Each `ATTinyCSBus`
+kept its own node armed, so a gated I2C sensor on each chain could hear the clock at once,
+and two at `0x68` collide. Buses now register themselves, and arming a node first disarms
+any other chain on the same SCL/SDA. The cost is one 3-byte write when consecutive sensors
+sit on different chains of one bus.
+
+**A failed arm left the previous I2C sensor listening.** The arm never reached the chain,
+so the old node stayed armed and answered traffic meant for the new one: a plausible
+wrong reading. `ATTinyCSWireInterface::swapIn()` now disarms the chain when the arm fails,
+so the transaction NACKs instead. To make that work across chains, the bus tracks "may be
+armed" separately from its cached target: after a failed arm the target is cleared, but
+the old node may still be armed.
+
+**Old-protocol nodes are refused.** A v2 node reads a v3 frame's target byte as its
+payload. `probe()` used to warn and carry on; it now logs an error and returns false, so
+the node is never powered or armed.
+
+**`BOARD_ESP32C5_RJ45_HUB` had SPI on GPIO11/12**, the module's console UART. It moved to
+SCK 10 / MISO 9 / MOSI 8, the pins the hub hardware uses. `check_board_config.py` now
+checks SPI pins on C5 boards as well as chain pins.
+
+---
+
 ## 2026-10-07b — Three audit findings fixed: chain address, chained I2C bus, GPIO15 strobe
 
 ### The chain address had four copies, and they disagreed

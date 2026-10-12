@@ -24,6 +24,8 @@
 
 #include <Wire.h>
 
+#include <algorithm>
+
 #include "I2CWireSensorInterface.h"
 
 namespace SlimeVR {
@@ -39,7 +41,28 @@ ATTinyCSBus::ATTinyCSBus(
 	: m_sclPin(sclPin)
 	, m_sdaPin(sdaPin)
 	, m_baseAddress(baseAddress)
-	, m_strobePin(strobePin) {}
+	, m_strobePin(strobePin) {
+	allBuses().push_back(this);
+}
+
+ATTinyCSBus::~ATTinyCSBus() {
+	auto& buses = allBuses();
+	buses.erase(std::remove(buses.begin(), buses.end(), this), buses.end());
+}
+
+std::vector<ATTinyCSBus*>& ATTinyCSBus::allBuses() {
+	static std::vector<ATTinyCSBus*> buses;
+	return buses;
+}
+
+void ATTinyCSBus::disarmOtherChainsOnThisBus() {
+	for (auto* other : allBuses()) {
+		if (other != this && other->m_mayBeArmed && other->m_sclPin == m_sclPin
+			&& other->m_sdaPin == m_sdaPin) {
+			other->disarmAll();
+		}
+	}
+}
 
 void ATTinyCSBus::swapIn() {
 	// Cheap when the bus is already on these pins, and necessary when the tracker also
@@ -142,6 +165,11 @@ bool ATTinyCSBus::select(uint8_t nodeId, uint8_t channel) {
 		return true;
 	}
 
+	if (nodeId != NoNode) {
+		disarmOtherChainsOnThisBus();
+		m_mayBeArmed = true;
+	}
+
 	if (!writeFrame(Command::Arm, target, 0)) {
 		// Drop our cached belief rather than assume the write landed. Re-arming costs
 		// one short write; being wrong costs reading the wrong sensor's registers.
@@ -227,16 +255,18 @@ bool ATTinyCSBus::probe(uint8_t nodeId) {
 	}
 
 	if (version != ProtocolVersion) {
-		// v1 nodes ignore the channel nibble, so they still work as single-channel
-		// nodes. Worth saying out loud before someone wires a second sensor to one.
-		m_Logger.warn(
-			"ATtiny CS node %d speaks protocol v%d, firmware expects v%d - "
-			"multi-channel "
-			"selection will not work on this node",
+		// Refuse rather than warn. v3 is not wire-compatible with earlier versions: an
+		// older node listens on per-node addresses and would decode a v3 frame's target
+		// byte as its payload, so driving it means arming and powering the wrong
+		// things.
+		m_Logger.error(
+			"ATtiny CS node %d speaks protocol v%d, firmware expects v%d - reflash it. "
+			"Its sensor will read as absent.",
 			nodeId,
 			version,
 			ProtocolVersion
 		);
+		return false;
 	}
 
 	if (reportedId != nodeId) {
@@ -298,7 +328,9 @@ void ATTinyCSBus::stageSensorPowerUp() {
 }
 
 void ATTinyCSBus::disarmAll() {
-	writeFrame(Command::DisarmAll, packTarget(NoNode, 0), 0);
+	if (writeFrame(Command::DisarmAll, packTarget(NoNode, 0), 0)) {
+		m_mayBeArmed = false;
+	}
 	m_armedTarget = 0;
 
 	if (usesStrobe()) {
@@ -330,7 +362,12 @@ void ATTinyCSWireInterface::swapIn() {
 	// Arming ungates this node's sensor SCL and gates every other node's. From here the
 	// caller does ordinary Wire traffic; the sensor's own address is irrelevant to
 	// anyone else on the chain because nobody else can hear the clock.
-	m_bus->select(m_nodeId, m_channel);
+	if (!m_bus->select(m_nodeId, m_channel)) {
+		// The arm was lost, so whichever node was armed before may still be. Its sensor
+		// would answer the traffic meant for this one - a plausible, wrong reading.
+		// Disarm everything so the transaction fails visibly instead.
+		m_bus->disarmAll();
+	}
 }
 
 bool ATTinyCSWireInterface::isNodePresent() const {

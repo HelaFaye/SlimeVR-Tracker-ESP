@@ -10,7 +10,8 @@ Both failures this guards against shipped once and produced no error anywhere:
     the chain address, and they disagreed (0x30 against 0x13). A hub built that way
     finds no nodes.
   - a board put a chain strobe on ESP32-C5 GPIO15, which the hub hardware leaves
-    unconnected because modules with in-package PSRAM use it as SPICS1.
+    unconnected because modules with in-package PSRAM use it as SPICS1, and another
+    put SPI on GPIO11/12, the module's console UART.
 """
 
 import configparser
@@ -139,7 +140,7 @@ ok(raises(lambda: build({"a": {"scl": "4", "sda": "5", "strobe": "6", "baseAddre
 
 # ------------------------------------------------------------ ESP32-C5 chain pins
 
-print("\nESP32-C5 chain pins")
+print("\nESP32-C5 chain and SPI pins")
 ini = configparser.ConfigParser(interpolation=None)
 ini.read(ROOT / "platformio.ini")
 c5_boards = [
@@ -160,6 +161,15 @@ for name in c5_boards:
                 continue
             ok(int(pin) not in C5_RESERVED,
                f"{name}: chain '{chain_name}' {role} on GPIO{pin} is usable on the module")
+    for bus_name, bus in pp._spi_buses(defaults["defaults"][name]["values"]).items():
+        if not bus:
+            continue
+        for role in ("sck", "miso", "mosi"):
+            pin = bus.get(role)
+            if pin is None or int(pin) < 0:
+                continue
+            ok(int(pin) not in C5_RESERVED,
+               f"{name}: SPI '{bus_name}' {role} on GPIO{pin} is usable on the module")
 
 print(f"\n{checks} checks, {len(failures)} failed")
 for f in failures:

@@ -177,8 +177,9 @@ different id.
 
 v3 is not wire-compatible with v1 or v2, which used a second, per-node address. An older
 node listens on the wrong address and reads a v3 frame's target byte as its payload, so
-reflash every node when moving to v3. The host logs a warning if a node reports an older
-version.
+reflash every node when moving to v3. The host refuses a node that reports any other
+version: it logs an error and treats that node's sensor as absent, rather than driving it
+with frames it would misread.
 
 ---
 
