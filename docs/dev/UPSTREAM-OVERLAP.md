@@ -124,4 +124,19 @@ I2C clocks over a shared cable to addressed nodes. I2SPI is not redundant.
 
 ## Server fork scan result
 
-_Filled in when the scan completes._
+All 270 non-upstream branch tips across the 63 active server forks were fetched tree-only
+and searched for Python files, fake, synthetic or simulated trackers, emulators, I2SPI,
+ATtiny and ESP-NOW work.
+
+- **No tracker simulator anywhere.** The name matches were upstream's own `ViveEmulation`
+  (a skeleton feature) and the dongle onboarding and telemetry UI.
+- **MonakaVR/MonakaVR** carries Python tooling: `third_party/monaka-protocol{,-v2}/tools/`
+  and release and protocol verification scripts. These are codec, schema and fixture tests
+  for its own MonakaProtocol wire format, not a driver that speaks the SlimeVR UDP tracker
+  protocol at a server.
+- **Dongle UI** (`gui/.../onboarding/pages/Dongle.tsx`, and in KibbieKatt's
+  `projected-yaw-rst` `DongleSettings`/`DongleTelemetry`) is server-side support for the
+  official nRF dongle. Relevant background if a C5 ESP-NOW gateway (§6) is ever presented
+  to the server as a dongle rather than as UDP trackers.
+
+`tools/synthetic-tracker` in HelaFaye/SlimeVR-Server is therefore not redundant.
