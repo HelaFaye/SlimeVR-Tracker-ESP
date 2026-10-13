@@ -96,6 +96,10 @@ def format_value(val: Any, typ: str, key: str = "<unknown>") -> str:
 # Kept byte-for-byte as the pre-configurable-SPI default so boards that predate the
 # "SPI" config block (notably BOARD_SLIMEVR_V1_2) generate exactly what they did before.
 LEGACY_SPI_BUS = "DIRECT_SPI(24'000'000, MSBFIRST, SPI_MODE3)"
+LEGACY_SPI_CLOCK = 24000000
+
+# Clock for a board "SPI" block that does not set one: safe on cable (I2SPI.md §3.2).
+SPI_DEFAULT_CLOCK = 4000000
 
 # Fastest SPI clock any supported SPI magnetometer accepts (MMC5983MA and LIS3MDL: 10 MHz).
 MAG_SPI_MAX_CLOCK = 10000000
@@ -231,7 +235,7 @@ def _format_spi_bus(spi: Optional[dict]) -> str:
     if not spi:
         return LEGACY_SPI_BUS
 
-    clock = spi.get('clock', 4000000)
+    clock = spi.get('clock', SPI_DEFAULT_CLOCK)
     bit_order = spi.get('bitOrder', 'MSBFIRST')
     mode = spi.get('mode', 'SPI_MODE3')
 
@@ -255,15 +259,23 @@ def _format_mag(mag: dict, spi_buses: dict, chains: dict) -> str:
     if bus_name not in spi_buses:
         raise ValueError(f"magnetometer names SPI bus {bus_name!r}, which SPI does not define")
     # Same pins as the IMU's bus, but the mag's own settings: the supported parts
-    # (MMC5983MA, LIS3MDL) are mode 3, MSB first, 10 MHz at most, while an IMU bus may
-    # run faster (the legacy default is 24 MHz). SPISettings are applied per transaction,
-    # so both share one SPIClass safely.
-    bus = dict(spi_buses.get(bus_name) or {})
+    # (MMC5983MA, LIS3MDL) take 10 MHz at most, while an IMU bus may run faster (the
+    # legacy default is 24 MHz). SPISettings are applied per transaction, so both
+    # share one SPIClass safely.
+    #
+    # Mode follows the bus unless the mag overrides it. Both parts specify mode 3, but
+    # SparkFun found the MMC5983MA works only in mode 0 in practice, and keeping the
+    # bus's mode avoids flipping SCK's idle level between the IMU's and the mag's
+    # transactions.
+    configured = spi_buses.get(bus_name)
+    bus = dict(configured or {})
     limit = int(mag.get('clock', MAG_SPI_MAX_CLOCK))
     if limit > MAG_SPI_MAX_CLOCK:
         raise ValueError(f"magnetometer clock {limit} exceeds {MAG_SPI_MAX_CLOCK} Hz")
-    bus['clock'] = min(int(bus.get('clock', limit)), limit)
-    bus['mode'] = 'SPI_MODE3'
+    # The bus's own clock when unset is what _format_spi_bus would use for it.
+    bus_clock = int(bus.get('clock', SPI_DEFAULT_CLOCK if configured else LEGACY_SPI_CLOCK))
+    bus['clock'] = min(bus_clock, limit)
+    bus['mode'] = mag.get('mode', bus.get('mode', 'SPI_MODE3'))
     bus['bitOrder'] = 'MSBFIRST'
     return (
         f"SPI_MAG({_format_spi_bus(bus)}, "

@@ -70,7 +70,7 @@ our own host-polled path rather than wait on a WIP PR. Overlapping pieces:
 | `scaleMagSample`, per-part `resolution` | Same names and intent; adds byte order, zero offset, per-transport burst flag |
 | `isMagAttached` | Same |
 | `readAux` burst | Same shape (`readAux(addr, buf, len)`) |
-| `SensorToggles` `emitToggleChange` fix | Same fix |
+| `SensorToggles` `emitToggleChange` from `setToggle()` | Emitted from `Sensor::setFlag` *after* the configuration is saved. #465's placement makes the BNO08x listener, which re-reads toggles from the configuration, reapply the old value |
 | — | SPI transport, MMC5983MA, LIS3MDL, `"mag"` in board config |
 
 **Action:** when #465 lands, rebase onto it, keep its names, and re-add the SPI transport

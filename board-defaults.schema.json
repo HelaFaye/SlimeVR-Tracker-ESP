@@ -103,7 +103,8 @@
 					]
 				},
 				"bus": { "type": "string", "description": "Named SPI bus. Omit when there is only one" },
-				"clock": { "type": "integer", "minimum": 100000, "maximum": 10000000, "description": "SPI clock for the magnetometer in Hz. Default and maximum 10 MHz, and never faster than the bus's own clock. Mode 3, MSB first, regardless of the bus" }
+				"clock": { "type": "integer", "minimum": 100000, "maximum": 10000000, "description": "SPI clock for the magnetometer in Hz. Default and maximum 10 MHz, and never faster than the bus's own clock" },
+				"mode": { "type": "string", "enum": ["SPI_MODE0", "SPI_MODE3"], "description": "SPI mode for the magnetometer. Default: the bus's mode. Both supported parts specify mode 3; the MMC5983MA has been reported to need mode 0 in practice" }
 			},
 			"required": ["cs"],
 			"additionalProperties": false

@@ -4,6 +4,49 @@ Newest first. Each entry says what changed, what was verified, and what is still
 
 ---
 
+## 2026-10-13c — Double-check: first real C5 builds, review fixes, corrected limits
+
+**The ESP32-C5 boards build for the first time.** PlatformIO now works here through GitHub
+(`scripts/bootstrap-pioarduino.sh`, docs/dev/SETUP.md). All three C5 envs build, and so
+does the chain hub with a config using every chain form plus SPI mags. Two real faults
+found:
+
+- the merge with upstream `main` broke every C5 board: its new product-info string needs a
+  `BOARD_N<id>` name per board id, and ids 28–30 had none. Added, and
+  `check_board_config.py` now fails on any id without a name;
+- the C5 image (~1.39 MB on Arduino-ESP32 3.3) overflowed the default 1.25 MB app slot. The
+  C5 envs now use `min_spiffs.csv` (OTA kept, 128 KB for the LittleFS config).
+
+CI on f741311 had already built every ESP8266 and ESP32 board with the SPI-mag code.
+
+**Code review fixes** (independent review against the MMC5983MA and LIS3MDL datasheets,
+which it confirmed register for register):
+
+- **Regression, fixed:** emitting the toggle change from `setToggle()` made the BNO08x
+  listener re-read the *old* value from the configuration and save it back. Now
+  `Sensor::setFlag` saves first and notifies after, and the listener runs from a copy.
+- The ICM-45 aux busy-waits had no timeout. With mags polled at run time, a wedged aux bus
+  would hang the main loop. Now 5 ms.
+- A failed aux read no longer feeds the fusion (an MMC5983MA zero buffer is full scale).
+- Switching the mag off now returns the fusion to 6D at once.
+- The mag's SPI clock could exceed an SPI bus left at its 4 MHz default. The mag's mode now
+  follows the bus unless overridden: SparkFun reports the MMC5983MA needing mode 0.
+- Known gaps, documented: no per-mag axis remap, no hard/soft-iron calibration.
+
+**Docs audit fixes** (I2SPI §3.3, §4.5, §10, §14; DEC-008, -015, -017; glove, example and
+hardware notes):
+
+- flat patch cable is typically **32 AWG**, not 26. A full chain over 2 m drops ~175 mV,
+  not 43; the 100 mV budget feeds ~8 reference nodes on flat cable;
+- the per-sensor SPI cost omitted the FIFO_COUNT read: 48 µs, not 40. The realistic
+  ceiling on the reference host is **~17 sensors at 200 Hz** (10 with SPI mags);
+- the 1 MHz figures assumed Fast-mode Plus, which the ESP32-C5 does not have, and which
+  needs far stronger pull-ups (2.2 kΩ drives only ~64 pF);
+- `sim/check_numbers.py` never read the docs; it says so now, and the docs say figures are
+  *pinned* there. It gained checks for all of the above (73 in total).
+
+---
+
 ## 2026-10-13b — I2SPI limits documented; ARM timing corrected
 
 **`docs/I2SPI.md` §14 now states the theoretical limits**:

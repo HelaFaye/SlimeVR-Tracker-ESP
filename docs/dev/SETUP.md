@@ -87,3 +87,17 @@ The target builds. `pio run` for the ESP32-C5 envs and a megaTinyCore build of t
 firmware both need network access to package registries and have never been run. Every
 check here is a host build; passing them says the logic and the numbers are right, not
 that it compiles for the part.
+
+## Firmware builds without the PlatformIO registry
+
+Some environments (Claude Code cloud sessions among them) reach GitHub but not
+`api.registry.platformio.org`. The ESP32-C5 boards still build there, because pioarduino
+publishes its toolchains and frameworks on GitHub:
+
+```sh
+scripts/bootstrap-pioarduino.sh       # once per machine: SCons and Adafruit BusIO from GitHub
+pio run -e BOARD_ESP32C5_DEVKITC1     # or BOARD_ESP32C5_RJ45_HUB, BOARD_SLIMEVR_C5_CHAIN_HUB
+```
+
+The boards on `espressif32 @ 6.7.0` and `espressif8266` take their toolchains from the
+registry, so they build only where it is reachable (CI, most desks).

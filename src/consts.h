@@ -133,6 +133,9 @@ enum class SensorTypeID : uint8_t {
 #define BOARD_N25 "BOARD_SLIMEVR_BUTTERFLY_DEV"
 #define BOARD_N26 "BOARD_SLIMEVR_BUTTERFLY"
 #define BOARD_N27 "BOARD_ESP32C6_SUPERMINI"
+#define BOARD_N28 "BOARD_ESP32C5_DEVKITC1"
+#define BOARD_N29 "BOARD_ESP32C5_RJ45_HUB"
+#define BOARD_N30 "BOARD_SLIMEVR_C5_CHAIN_HUB"
 #define BOARD_N250 \
 	"BOARD_DEV_RESERVED"  // Reserved, should not be used in any release firmware
 

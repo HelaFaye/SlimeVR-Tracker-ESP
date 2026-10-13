@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
 """
-Recompute every quantified claim in the docs from the constants in the source.
+Recompute the quantified claims in the docs from the constants in the source.
 
-The docs are full of numbers - timing budgets, panel dimensions, current draw, bus
-loading. Numbers written by hand go stale the moment a constant changes, and a stale
-number in a design doc is worse than no number because it gets trusted. This recomputes
-them and fails if a doc disagrees.
+The docs are full of numbers - timing budgets, current draw, bus loading. Numbers written
+by hand go stale the moment a constant changes, and a stale number in a design doc is
+worse than no number because it gets trusted. This recomputes them and fails if one moves
+away from the figure the docs state.
+
+It does not read the docs. Each `documented` value below is the figure as written in the
+doc named in its section; change both together. A doc figure with no check here is
+unchecked.
 
     python3 sim/check_numbers.py
 
@@ -73,6 +77,9 @@ I2C_FAST_HZ = 400_000          # I2C Fast mode
 I2C_FASTPLUS_HZ = 1_000_000    # Fast mode Plus
 SPI_HZ = 4_000_000             # our conservative over-cable clock
 AWG26_OHM_PER_M = 0.1339       # standard wire table, 26 AWG copper at 20 C
+AWG32_OHM_PER_M = 0.538        # 32 AWG copper. Flat 8P8C patch cable (I2SPI.md §2.1) is
+                               # commonly 32 AWG stranded; round patch cable 24-26 AWG.
+CABLE_OHM_PER_M = AWG32_OHM_PER_M  # design on the worst cable §2.1 allows
 RIBBON_PF_PER_M = 60           # midpoint of the 50-70 pF/m range; MEASURE YOURS
 I2C_BUS_PF_BUDGET = 400        # I2C spec, Fast mode
 IMU_MA = 0.42                  # TDK ICM-45686, 6-axis low-noise mode
@@ -83,7 +90,12 @@ ATTINY_MA = 3.0                # ATtiny412 at 5 MHz / 3.3 V - ESTIMATE
 HUB_MA = 100                   # ESP32-C5 Wi-Fi connected average - ESTIMATE, varies wildly
 
 LONGEST_CHAIN_M = 0.85         # thigh -> lower leg -> foot, per the example build
-FIFO_BURST_BYTES = 20          # one packet plus register address
+# One ICM-45686 visit (icm45base.h bulkRead): FIFO_COUNT read (address + 2 bytes) as its
+# own transaction, then at least one 20-byte packet (FullFifoEntrySize) plus address.
+# Wire time only: SPIImpl transfers byte by byte, so real time is longer.
+FIFO_COUNT_BYTES = 3
+FIFO_PACKET_BYTES = 21
+FIFO_BURST_BYTES = FIFO_COUNT_BYTES + FIFO_PACKET_BYTES
 
 
 def i2c_write_us(payload_bytes, hz):
@@ -150,7 +162,7 @@ softcs_400 = i2c_write_us(frame_len, I2C_FAST_HZ) * 2
 check("software CS assert+deassert at 400 kHz", softcs_400, 190, 0.02, " us")
 
 fifo_us = spi_transfer_us(FIFO_BURST_BYTES, SPI_HZ)
-check("one FIFO burst at 4 MHz", fifo_us, 40, 0.05, " us")
+check("one sensor's FIFO visit at 4 MHz (count + one packet)", fifo_us, 48, 0.02, " us")
 
 print("\nPoll cycle, 4 sensors at 200 Hz (5 ms period)")
 cycle_us = 5000
@@ -164,17 +176,17 @@ i2c_16_1m = 16 * arm_1m
 spi_16 = 16 * fifo_us
 check("I2C at 400 kHz", i2c_16_400 / 1000, 1.52, 0.02, " ms")
 check("I2C at 1 MHz", i2c_16_1m / 1000, 0.61, 0.02, " ms")
-check("SPI at 4 MHz", spi_16 / 1000, 0.64, 0.05, " ms")
-check("total at 400 kHz", (i2c_16_400 + spi_16) / 1000, 2.16, 0.02, " ms")
-check("total at 1 MHz", (i2c_16_1m + spi_16) / 1000, 1.25, 0.02, " ms")
+check("SPI at 4 MHz", spi_16 / 1000, 0.77, 0.02, " ms")
+check("total at 400 kHz", (i2c_16_400 + spi_16) / 1000, 2.29, 0.02, " ms")
+check("total at 1 MHz", (i2c_16_1m + spi_16) / 1000, 1.38, 0.02, " ms")
 check("fraction of a 200 Hz cycle at 400 kHz",
-      (i2c_16_400 + spi_16) / cycle_us * 100, 43, 0.02, " %")
+      (i2c_16_400 + spi_16) / cycle_us * 100, 46, 0.02, " %")
 check("fraction of a 200 Hz cycle at 1 MHz",
-      (i2c_16_1m + spi_16) / cycle_us * 100, 25, 0.02, " %")
+      (i2c_16_1m + spi_16) / cycle_us * 100, 27.5, 0.02, " %")
 check("fraction of a 100 Hz cycle at 400 kHz",
-      (i2c_16_400 + spi_16) / 10000 * 100, 22, 0.02, " %")
+      (i2c_16_400 + spi_16) / 10000 * 100, 23, 0.02, " %")
 check("fraction of a 100 Hz cycle at 1 MHz",
-      (i2c_16_1m + spi_16) / 10000 * 100, 12.5, 0.02, " %")
+      (i2c_16_1m + spi_16) / 10000 * 100, 14, 0.02, " %")
 
 # ---------------------------------------------------------------- electrical
 
@@ -184,13 +196,17 @@ check("per-node current", node_ma, 5.4, 0.05, " mA")
 two_node_ma = 2 * node_ma
 check("two-node chain", two_node_ma, 10.8, 0.05, " mA")
 check("runtime penalty, two-node chain",
-      two_node_ma / (HUB_MA + IMU_MA + MAG_MA) * 100, 10.4, 0.10, " %")
+      two_node_ma / (HUB_MA + IMU_MA + MAG_MA) * 100, 10.6, 0.02, " %")
 check("runtime penalty, one-node chain",
-      node_ma / (HUB_MA + IMU_MA + MAG_MA) * 100, 5.2, 0.10, " %")
+      node_ma / (HUB_MA + IMU_MA + MAG_MA) * 100, 5.3, 0.02, " %")
 
 # Both conductors carry the current: VBUS out and GND back.
-drop_mv = two_node_ma / 1000 * LONGEST_CHAIN_M * AWG26_OHM_PER_M * 2 * 1000
-check("supply drop over the longest chain (both conductors)", drop_mv, 2.5, 0.10, " mV")
+drop_mv = two_node_ma / 1000 * LONGEST_CHAIN_M * CABLE_OHM_PER_M * 2 * 1000
+check("supply drop over the longest chain (both conductors, 32 AWG)", drop_mv, 9.9, 0.02,
+      " mV")
+check("cable round-trip resistance, 32 AWG", CABLE_OHM_PER_M * 2, 1.08, 0.02, " ohm/m")
+check("six reference nodes", 6 * node_ma, 32.5, 0.02, " mA")
+check("their drop per metre, 32 AWG", 6 * node_ma * CABLE_OHM_PER_M * 2, 35, 0.02, " mV")
 
 cable_pf = LONGEST_CHAIN_M * RIBBON_PF_PER_M
 check("I2C cable capacitance, longest chain", cable_pf, 51, 0.10, " pF")
@@ -210,6 +226,8 @@ VDD = 3.3
 I2C_FAST_RISE_NS = 300         # I2C spec, Fast mode, max rise time 30%->70%
 I2C_FAST_SINK_MA = 3           # I2C spec, Fast mode, VOL 0.4 V at 3 mA
 I2C_VOL = 0.4
+I2C_FMP_RISE_NS = 120          # I2C spec, Fast-mode Plus
+I2C_FMP_SINK_MA = 20           # I2C spec, Fast-mode Plus, VOL 0.4 V at 20 mA
 PULLUP_DEFAULT_OHM = 2200      # I2SPI.md §3.1 host default
 NODE_PF = 15                   # per node per I2C line: MCU pin, two jacks, traces - ESTIMATE
 SUPPLY_DROP_BUDGET_MV = 100    # what we allow VBUS to sag end to end - a choice
@@ -223,22 +241,36 @@ whitelist = re.search(r"AddressWhitelist\[\] = \{([^}]*)\}", whitelist).group(1)
 chains_per_bus = len([a for a in whitelist.split(",") if a.strip()])
 check("chains sharing one I2C bus", chains_per_bus, 7, 0, "")
 check("targets on one I2C bus", chains_per_bus * max_node * max_chan, 1680, 0, "")
-check("enumeration, full chain", max_node * settle_ms, 225, 0, " ms")
+check("power staging, full chain", max_node * settle_ms, 225, 0, " ms")
+# IDENTIFY (a frame) then a 4-byte read (address + 4 bytes) for each id 1..15.
+probe_ms = max_node * (arm_400 + i2c_write_us(identity_len, I2C_FAST_HZ)) / 1000
+check("probing ids 1..15 at 400 kHz", probe_ms, 3.2, 0.02, " ms")
 
 per_400 = arm_400 + fifo_us
 per_1m = arm_1m + fifo_us
-check("per-sensor cost at 400 kHz", per_400, 135, 0.02, " us")
-check("per-sensor cost at 1 MHz", per_1m, 78, 0.02, " us")
-check("sensors at 200 Hz, whole cycle, 400 kHz", int(cycle_us // per_400), 37, 0, "")
-check("sensors at 200 Hz, whole cycle, 1 MHz", int(cycle_us // per_1m), 64, 0, "")
-check("sensors at 200 Hz, half the cycle, 400 kHz", int(cycle_us / 2 // per_400), 18, 0, "")
-check("sensors at 200 Hz, half the cycle, 1 MHz", int(cycle_us / 2 // per_1m), 32, 0, "")
+per_100 = i2c_write_us(frame_len, 100_000) + fifo_us
+check("per-sensor cost at 400 kHz", per_400, 143, 0.02, " us")
+check("per-sensor cost at 1 MHz", per_1m, 86, 0.02, " us")
+check("sensors at 200 Hz, whole cycle, 400 kHz", int(cycle_us // per_400), 34, 0, "")
+check("sensors at 200 Hz, whole cycle, 1 MHz", int(cycle_us // per_1m), 58, 0, "")
+check("sensors at 200 Hz, half the cycle, 400 kHz", int(cycle_us / 2 // per_400), 17, 0, "")
+check("sensors at 200 Hz, half the cycle, 1 MHz", int(cycle_us / 2 // per_1m), 29, 0, "")
+check("ARM at 100 kHz", i2c_write_us(frame_len, 100_000), 380, 0.02, " us")
+check("sensors at 200 Hz, half the cycle, 100 kHz", int(cycle_us / 2 // per_100), 5, 0, "")
+
+# An SPI magnetometer on its own node channel (§4.5 B): every MagTs (10 ms, so every
+# other 200 Hz cycle) one ARM to the mag, one back to the IMU, and a 7-byte read.
+mag_b_us = (2 * arm_400 + spi_transfer_us(7, SPI_HZ)) / 2
+check("SPI mag on a node channel, per 5 ms cycle at 400 kHz", mag_b_us, 102, 0.02, " us")
+check("sensors with such a mag, half the cycle, 400 kHz",
+      int(cycle_us / 2 // (per_400 + mag_b_us)), 10, 0, "")
 
 # Rise time on an RC: 30% -> 70% takes 0.8473 RC.
 def c_max_pf(r_ohm, rise_ns=I2C_FAST_RISE_NS):
     return rise_ns * 1e-9 / (0.8473 * r_ohm) * 1e12
 
 r_min = (VDD - I2C_VOL) / (I2C_FAST_SINK_MA / 1000)
+r_min_fmp = (VDD - I2C_VOL) / (I2C_FMP_SINK_MA / 1000)
 check("bus capacitance at 400 kHz with the 2.2k default", c_max_pf(PULLUP_DEFAULT_OHM),
       160, 0.02, " pF")
 check("strongest Fast-mode pull-up (3 mA sink)", r_min, 970, 0.02, " ohm")
@@ -247,6 +279,16 @@ check("cable left for 2 nodes, 2.2k", (c_max_pf(PULLUP_DEFAULT_OHM) - 2 * NODE_P
       / RIBBON_PF_PER_M, 2.2, 0.05, " m")
 check("cable left for 15 nodes, strongest pull-up", (c_max_pf(r_min) - 15 * NODE_PF)
       / RIBBON_PF_PER_M, 2.35, 0.05, " m")
+check("Fast-mode Plus: bus capacitance with the 2.2k default",
+      c_max_pf(PULLUP_DEFAULT_OHM, I2C_FMP_RISE_NS), 64, 0.02, " pF")
+check("Fast-mode Plus: strongest pull-up (20 mA sink)", r_min_fmp, 145, 0.02, " ohm")
+full_2m_pf = 15 * NODE_PF + LONG_CHAIN_M * RIBBON_PF_PER_M
+check("full chain plus 2 m of cable", full_2m_pf, 345, 0.02, " pF")
+check("Fast-mode Plus: pull-up that drives it",
+      I2C_FMP_RISE_NS * 1e-9 / (0.8473 * full_2m_pf * 1e-12), 410, 0.02, " ohm")
+check("glove chain: 6 nodes + 0.3 m", 6 * NODE_PF + 0.3 * RIBBON_PF_PER_M, 108, 0.02, " pF")
+check("Fast-mode Plus: pull-up for the glove chain",
+      I2C_FMP_RISE_NS * 1e-9 / (0.8473 * 108e-12), 1310, 0.02, " ohm")
 checks += 1
 if 15 * NODE_PF > c_max_pf(PULLUP_DEFAULT_OHM):
     print("  [ok] 15 nodes alone exceed what the 2.2k default can drive at 400 kHz")
@@ -255,11 +297,17 @@ else:
 
 full_ma = max_node * node_ma
 check("full chain of reference nodes", full_ma, 81, 0.02, " mA")
-check("its supply drop over 2 m", full_ma / 1000 * LONG_CHAIN_M * AWG26_OHM_PER_M * 2
-      * 1000, 43, 0.05, " mV")
-budget_ma = SUPPLY_DROP_BUDGET_MV / (LONG_CHAIN_M * AWG26_OHM_PER_M * 2)
-check("current within the drop budget over 2 m", budget_ma, 187, 0.02, " mA")
-check("camera nodes within that budget", int(budget_ma // CAMERA_NODE_MA), 2, 0, "")
+check("its supply drop over 2 m, 32 AWG", full_ma / 1000 * LONG_CHAIN_M * CABLE_OHM_PER_M
+      * 2 * 1000, 175, 0.02, " mV")
+check("the same on 26 AWG", full_ma / 1000 * LONG_CHAIN_M * AWG26_OHM_PER_M * 2 * 1000,
+      43, 0.05, " mV")
+budget_ma = SUPPLY_DROP_BUDGET_MV / (LONG_CHAIN_M * CABLE_OHM_PER_M * 2)
+check("current within the drop budget over 2 m, 32 AWG", budget_ma, 46, 0.02, " mA")
+check("reference nodes within that budget", int(budget_ma // node_ma), 8, 0, "")
+budget_26 = SUPPLY_DROP_BUDGET_MV / (LONG_CHAIN_M * AWG26_OHM_PER_M * 2)
+check("current within the drop budget over 2 m, 26 AWG", budget_26, 187, 0.02, " mA")
+check("camera nodes within that budget, 26 AWG", int(budget_26 // CAMERA_NODE_MA), 2, 0,
+      "")
 
 for mhz, fps in ((8, 13), (12, 19.5)):
     check(f"QVGA greyscale frames/s, whole chain, {mhz} MHz SPI",

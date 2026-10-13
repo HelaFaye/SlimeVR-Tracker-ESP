@@ -171,13 +171,30 @@ for name in c5_boards:
             ok(int(pin) not in C5_RESERVED,
                f"{name}: SPI '{bus_name}' {role} on GPIO{pin} is usable on the module")
 
+print("\nBoard ids")
+consts = (ROOT / "src/consts.h").read_text()
+ids = dict(re.findall(r"^#define (BOARD_\w+) (\d+)\b", consts, re.M))
+names = dict(re.findall(r"^#define BOARD_N(\d+)\s+\\?\s*\"(BOARD_\w+)\"", consts, re.M))
+for name, num in sorted(ids.items(), key=lambda kv: int(kv[1])):
+    if name.startswith("BOARD_N"):
+        continue
+    # globals.h's product-info string expands BOARD_N<id>: a board without one does not
+    # compile (the merge of upstream main broke the C5 boards exactly this way).
+    ok(names.get(num) == name, f"{name} ({num}) has BOARD_N{num} naming it")
+
 print("\nSPI magnetometers")
 fast_bus = {"default": {"sck": "10", "miso": "9", "mosi": "8", "clock": 24000000,
                         "mode": "SPI_MODE0"}}
 mag = pp._format_mag({"cs": {"type": "attiny", "node": 1, "channel": 1}}, fast_bus,
                      {"default": {}})
-ok(mag == "SPI_MAG(SPI_BUS(10000000, MSBFIRST, SPI_MODE3, 10, 9, 8), ATTINY_CS_CH(1, 1))",
-   "mag on a 24 MHz mode-0 bus: same pins, capped at 10 MHz, mode 3")
+ok(mag == "SPI_MAG(SPI_BUS(10000000, MSBFIRST, SPI_MODE0, 10, 9, 8), ATTINY_CS_CH(1, 1))",
+   "mag on a 24 MHz mode-0 bus: same pins, capped at 10 MHz, keeps the bus's mode")
+ok("SPI_MODE3, 10, 9, 8)" in pp._format_mag(
+       {"cs": "7", "mode": "SPI_MODE3"}, fast_bus, {}),
+   "mag mode can be overridden")
+no_clock = {"default": {"sck": "10", "miso": "9", "mosi": "8"}}
+ok("SPI_BUS(4000000," in pp._format_mag({"cs": "7"}, no_clock, {}),
+   "bus with no clock set: mag runs at the bus's 4 MHz default, not 10 MHz")
 slow_bus = {"default": {"sck": "10", "miso": "9", "mosi": "8", "clock": 2000000}}
 ok("SPI_BUS(2000000," in pp._format_mag({"cs": "7"}, slow_bus, {}),
    "mag never runs faster than its bus")
