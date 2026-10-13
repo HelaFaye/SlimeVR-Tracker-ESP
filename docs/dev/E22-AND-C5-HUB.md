@@ -137,6 +137,28 @@ Two ESP radios do what one cannot:
 - Or simply **two C5 gateways** on different bands, each on its own USB port. Crude, but it
   needs no new firmware beyond the gateway.
 
+### 3.4 The link to the PC (added 2026-10-13)
+
+mitzey234's receiver reaches the server as a **USB HID** device, through the S2/S3's USB
+OTG. **The ESP32-C5 has no USB OTG**, only USB Serial/JTAG (`SOC_USB_OTG_SUPPORTED` is unset
+in its `soc_caps.h`), so it cannot be that device. Three ways round it:
+
+| | How | Cost | Keeps channel control |
+|---|---|---|---|
+| **A. C5 radio + S3 USB** | C5 runs ESP-NOW (either band) and forwards frames over UART or SPI to an S3 running mitzey234's HID code, with its radio layer replaced by the link | Two chips; the server needs nothing new | Yes |
+| **B. C5 over Wi-Fi** | C5 joins the home network as STA and presents each ESP-NOW tracker to the server as a UDP tracker | One chip; no server change | **No:** ESP-NOW must share the router's channel, so §4's moves are the router's decision |
+| **C. C5 over USB serial** | Frames over the USB Serial/JTAG CDC port; a serial reader in the server feeds the same parser as the HID dongle | One chip; server work in the HelaFaye fork | Yes |
+
+**Recommendation: A** for a first hub. It reuses the most existing, working code on both
+ends, keeps the hub in charge of its channel, and the S3 half already exists as a product.
+C is the cleaner single-chip design once the radio side is proven. B gives up the main
+reason to build a hub.
+
+Before choosing, run `extras/c5-espnow-probe` on two C5 boards. It answers whether
+ESP-NOW works on 5 GHz at all on the pinned ESP-IDF, what loss each band sees on a body,
+and whether peers follow an announced channel switch. If 5 GHz ESP-NOW does not work, the
+C5 adds nothing over an S3 dongle and the hub plan stops there.
+
 ---
 
 ## 4. Interference monitoring and proactive channel moves
@@ -193,10 +215,10 @@ second radio (§3.3) relieves it; a faster CPU would not.
 
 ## 5. Suggested next steps, in order
 
-1. Decide the hub topology (A recommended). If A, start from mitzey234's ESP-NOW tracker
-   and receiver, and port the receiver to the C5.
-2. Verify on the pinned ESP-IDF: ESP-NOW on 5 GHz channels, SoftAP on 5 GHz, and channel
-   change while trackers are attached.
+1. Run `extras/c5-espnow-probe` on two or more C5 boards: ESP-NOW on 5 GHz, loss per band,
+   and announced channel switches. (Builds; not yet run on hardware.)
+2. If 5 GHz works, pick the PC link (§3.4, A recommended) and start from mitzey234's
+   ESP-NOW tracker and receiver.
 3. Add the `SWITCH` announcement and loss/noise-triggered moves to the gateway, with the
    fallback search on trackers.
 4. Do transport work on top of upstream PR #534's `CommunicationStrategy`.
