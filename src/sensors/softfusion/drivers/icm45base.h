@@ -382,13 +382,26 @@ struct ICM45Base {
 	 * hardware evidence first.
 	 */
 	uint8_t readAux(uint8_t address) {
+		uint8_t value = 0;
+		readAux(address, &value, 1);
+		return value;
+	}
+
+	/// Burst read through the aux master: up to 15 bytes (the burst length field is
+	/// four bits). Same shape as upstream PR #465's multi-byte readAux.
+	void readAux(uint8_t address, uint8_t* buffer, size_t length) {
+		if (length == 0 || length > 15) {
+			m_Logger.error("Aux burst of %u bytes is out of range", unsigned(length));
+			return;
+		}
+
 		writeBankRegister<typename BaseRegs::I2CMDevProfile0>(address);
 
 		writeBankRegister<typename BaseRegs::I2CMCommand0>(
 			(0b1 << 7)  // Last transaction
 			| (0b0 << 6)  // Channel 0
 			| (0b01 << 4)  // Read with register
-			| (0b0001 << 0)  // Read 1 byte
+			| static_cast<uint8_t>(length)  // Burst length
 		);
 		writeBankRegister<typename BaseRegs::I2CMControl>(
 			(0b0 << 6)  // I2CM_RESTART_EN: no restart (a write has only one phase)
@@ -409,7 +422,7 @@ struct ICM45Base {
 			);
 		}
 
-		return readBankRegister<typename BaseRegs::I2CMRdData0>();
+		readBankRegister<typename BaseRegs::I2CMRdData0>(buffer, length);
 	}
 
 	void writeAux(uint8_t address, uint8_t value) {
@@ -447,14 +460,6 @@ struct ICM45Base {
 				lastStatus
 			);
 		}
-	}
-
-	void startAuxPolling(uint8_t dataReg, MagDataWidth dataWidth) {
-		// TODO:
-	}
-
-	void stopAuxPolling() {
-		// TODO:
 	}
 };
 

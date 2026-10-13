@@ -4,6 +4,48 @@ Newest first. Each entry says what changed, what was verified, and what is still
 
 ---
 
+## 2026-10-13 — Magnetometers over SPI
+
+**A sensor can now have an SPI magnetometer on its own chip select**, on a host pin or on
+an I2SPI node channel: `"mag": {"cs": ...}` in board config (DEC-017, I2SPI §4.5 B).
+Supported over SPI: **MMC5983MA** and **LIS3MDL**. Any SoftFusion IMU can use one, not only
+the ICM-45 with its aux master.
+
+On the way, `main`'s mag path turned out not to work at all:
+
+- aux polling was a TODO stub, so no sample ever reached the fusion;
+- `setToggle()` never notified listeners, so the mag toggle did nothing until a reboot.
+
+`MagDriver` now polls the mag itself at the IMU driver's `MagTs`, over either transport,
+and feeds `updateMag`. That also makes the aux mags (QMC6309, IST8306, and now LIS3MDL)
+work. The MagEnabled toggle is offered only when a mag answered.
+
+The generator gives the mag its own `SPISettings` on the IMU's pins: mode 3, MSB first,
+at most 10 MHz. The legacy IMU bus default is 24 MHz, which would have been out of spec
+for both parts.
+
+**Verified (host):**
+
+- `sim/test_magdriver.sh`, 28 checks against register models of both parts:
+  - detection per transport;
+  - exact setup writes;
+  - burst addressing (`0x68` for LIS3MDL on SPI, `0xA8` via aux);
+  - scaling, including sign and offset edge cases;
+  - polling cadence, including no catch-up burst after a stall.
+- `check_board_config.py`: mag bus settings and refusals.
+- `check_desc_list.py`: `SPI_MAG` in a synthetic board, on both a node channel and a pin.
+
+**Unverified:**
+
+- The firmware build: PlatformIO's registry is blocked here, so CI on PR #1 is the first
+  compile.
+- Anything on hardware. Bring-up order: an LIS3MDL on a host pin first, then on a node
+  channel.
+
+Overlaps upstream PR #465's mag pipeline; reconcile when it lands (`UPSTREAM-OVERLAP.md` §2).
+
+---
+
 ## 2026-10-12b — I2SPI spec, chained I2C fix, QEMU harness, upstream survey, E22 analysis
 
 **`docs/I2SPI.md` is now the normative v3 specification**, written to be the standard for
