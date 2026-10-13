@@ -1,5 +1,7 @@
 # Overlap with upstream and forks
 
+Ready-to-post messages for the actions below are in `UPSTREAM-DRAFTS.md`.
+
 A survey, done 2026-10-12, of every branch and every recently active fork of
 SlimeVR-Tracker-ESP and SlimeVR-Server, looking for anything that duplicates or collides
 with the work in this fork and its two sibling repositories.
