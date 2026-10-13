@@ -91,7 +91,7 @@ What I2SPI would buy inside a glove:
 
 - **SPI data rate.** Sixteen sensors on 400 kHz I2C is a real constraint; on 4 MHz SPI it
   is not. If you want 15 sensors per hand at a decent ODR, the bus matters.
-- **Fewer parts than one node per sensor**, using protocol v2 channels: one ATtiny per
+- **Fewer parts than one node per sensor**, using protocol v3 channels: one ATtiny per
   finger, three channels each, five nodes for fifteen sensors.
 
 What it costs, stated plainly so the channel feature is not oversold:
@@ -109,16 +109,22 @@ Sixteen sensors on one chain, per poll cycle:
 
 | | at 400 kHz I2C | at 1 MHz I2C |
 |---|---|---|
-| 16 arm writes (~3 bytes each) | 1.2 ms | 0.48 ms |
-| 16 FIFO reads over 4 MHz SPI | 0.64 ms | 0.64 ms |
-| **Total per cycle** | **~1.85 ms** | **~1.1 ms** |
-| As a fraction of a 200 Hz (5 ms) cycle | 37% | 22% |
-| As a fraction of a 100 Hz (10 ms) cycle | 18% | 11% |
+| 16 arm writes (4 bytes each, address included) | 1.52 ms | 0.61 ms |
+| 16 FIFO visits over 4 MHz SPI (count read + one packet) | 0.77 ms | 0.77 ms |
+| **Total per cycle** | **~2.29 ms** | **~1.38 ms** |
+| As a fraction of a 200 Hz (5 ms) cycle | 46% | 27.5% |
+| As a fraction of a 100 Hz (10 ms) cycle | 23% | 14% |
 
-Two conclusions. Run the glove chain at **Fast-mode Plus** — the wiring is short and
-low-capacitance, so 1 MHz is far easier here than on the 85 cm body cable. And run fingers
-at **100 Hz**, not 200: fingers do not move fast enough to need more, and it halves the
-cost.
+(Corrected 2026-10-13: the earlier figures left the I2C address byte out of each arm
+write and the FIFO_COUNT read out of each visit. All are wire time, so lower bounds, and
+pinned in `sim/check_numbers.py`.)
+
+Two conclusions. Run fingers at **100 Hz**, not 200: fingers do not move fast enough to
+need more, and it halves the cost. And Fast-mode Plus would help, but it is not available
+on the reference ESP32-C5 host (Standard and Fast mode only), and needs a firmware change
+(`I2C_SPEED` is fixed at 400 kHz). If a future host has it, the glove chain is where it
+fits: six nodes and ~0.3 m of wiring is ~108 pF, which needs pull-ups of ~1.3 kΩ or less
+at 1 MHz (I2SPI.md §14.2).
 
 ---
 

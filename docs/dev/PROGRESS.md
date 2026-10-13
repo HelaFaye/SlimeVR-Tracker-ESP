@@ -4,6 +4,123 @@ Newest first. Each entry says what changed, what was verified, and what is still
 
 ---
 
+## 2026-10-13c — Double-check: first real C5 builds, review fixes, corrected limits
+
+**The ESP32-C5 boards build for the first time.** PlatformIO now works here through GitHub
+(`scripts/bootstrap-pioarduino.sh`, docs/dev/SETUP.md). All three C5 envs build, and so
+does the chain hub with a config using every chain form plus SPI mags. Two real faults
+found:
+
+- the merge with upstream `main` broke every C5 board: its new product-info string needs a
+  `BOARD_N<id>` name per board id, and ids 28–30 had none. Added, and
+  `check_board_config.py` now fails on any id without a name;
+- the C5 image (~1.39 MB on Arduino-ESP32 3.3) overflowed the default 1.25 MB app slot. The
+  C5 envs now use `min_spiffs.csv` (OTA kept, 128 KB for the LittleFS config).
+
+CI on f741311 had already built every ESP8266 and ESP32 board with the SPI-mag code.
+
+**Code review fixes** (independent review against the MMC5983MA and LIS3MDL datasheets,
+which it confirmed register for register):
+
+- **Regression, fixed:** emitting the toggle change from `setToggle()` made the BNO08x
+  listener re-read the *old* value from the configuration and save it back. Now
+  `Sensor::setFlag` saves first and notifies after, and the listener runs from a copy.
+- The ICM-45 aux busy-waits had no timeout. With mags polled at run time, a wedged aux bus
+  would hang the main loop. Now 5 ms.
+- A failed aux read no longer feeds the fusion (an MMC5983MA zero buffer is full scale).
+- Switching the mag off now returns the fusion to 6D at once.
+- The mag's SPI clock could exceed an SPI bus left at its 4 MHz default. The mag's mode now
+  follows the bus unless overridden: SparkFun reports the MMC5983MA needing mode 0.
+- Known gaps, documented: no per-mag axis remap, no hard/soft-iron calibration.
+
+**Docs audit fixes** (I2SPI §3.3, §4.5, §10, §14; DEC-008, -015, -017; glove, example and
+hardware notes):
+
+- flat patch cable is typically **32 AWG**, not 26. A full chain over 2 m drops ~175 mV,
+  not 43; the 100 mV budget feeds ~8 reference nodes on flat cable;
+- the per-sensor SPI cost omitted the FIFO_COUNT read: 48 µs, not 40. The realistic
+  ceiling on the reference host is **~17 sensors at 200 Hz** (10 with SPI mags);
+- the 1 MHz figures assumed Fast-mode Plus, which the ESP32-C5 does not have, and which
+  needs far stronger pull-ups (2.2 kΩ drives only ~64 pF);
+- `sim/check_numbers.py` never read the docs; it says so now, and the docs say figures are
+  *pinned* there. It gained checks for all of the above (73 in total).
+
+---
+
+## 2026-10-13b — I2SPI limits documented; ARM timing corrected
+
+**`docs/I2SPI.md` §14 now states the theoretical limits**:
+
+- hard protocol limits: 15 nodes, 16 channels, 240 targets per chain, 7 chains and 1,680
+  targets per I2C bus;
+- what binds first: bus time, I2C rise time against bus capacitance, SPI on cable, the
+  supply budget, software;
+- how to scale under v3, and the options for a v4 with more nodes (recommended against);
+- cameras: raw video is out; result-reporting sensors, camera configuration over gated
+  I2C, and a proposed broadcast frame-sync trigger fit.
+
+Every figure is recomputed by `sim/check_numbers.py`, which gained 22 checks.
+
+**Correction: every `ARM` figure was ~25 % low.** `i2c_write_us()` left out the address
+byte, so a v3 arm write was given as 72.5 µs at 400 kHz; with the address it is 95 µs
+(38 µs at 1 MHz). Corrected throughout the spec, the glove note and the example build:
+
+- 16 sensors at 200 Hz take 43 % of the cycle at 400 kHz, not 36–37 %;
+- 25 % at 1 MHz.
+
+Older progress-log entries keep their original figures.
+
+**Findings from the limit arithmetic, not yet acted on:**
+
+- The 2.2 kΩ default pull-up can drive ~160 pF at 400 kHz. That is fine for the reference
+  chains, but a full 15-node chain needs ~1 kΩ.
+- At 200 Hz a host realistically serves 18 sensors at 400 kHz, or 32 at 1 MHz, across all
+  of its chains.
+
+---
+
+## 2026-10-13 — Magnetometers over SPI
+
+**A sensor can now have an SPI magnetometer on its own chip select**, on a host pin or on
+an I2SPI node channel: `"mag": {"cs": ...}` in board config (DEC-017, I2SPI §4.5 B).
+Supported over SPI: **MMC5983MA** and **LIS3MDL**. Any SoftFusion IMU can use one, not only
+the ICM-45 with its aux master.
+
+On the way, `main`'s mag path turned out not to work at all:
+
+- aux polling was a TODO stub, so no sample ever reached the fusion;
+- `setToggle()` never notified listeners, so the mag toggle did nothing until a reboot.
+
+`MagDriver` now polls the mag itself at the IMU driver's `MagTs`, over either transport,
+and feeds `updateMag`. That also makes the aux mags (QMC6309, IST8306, and now LIS3MDL)
+work. The MagEnabled toggle is offered only when a mag answered.
+
+The generator gives the mag its own `SPISettings` on the IMU's pins: mode 3, MSB first,
+at most 10 MHz. The legacy IMU bus default is 24 MHz, which would have been out of spec
+for both parts.
+
+**Verified (host):**
+
+- `sim/test_magdriver.sh`, 28 checks against register models of both parts:
+  - detection per transport;
+  - exact setup writes;
+  - burst addressing (`0x68` for LIS3MDL on SPI, `0xA8` via aux);
+  - scaling, including sign and offset edge cases;
+  - polling cadence, including no catch-up burst after a stall.
+- `check_board_config.py`: mag bus settings and refusals.
+- `check_desc_list.py`: `SPI_MAG` in a synthetic board, on both a node channel and a pin.
+
+**Unverified:**
+
+- The firmware build: PlatformIO's registry is blocked here, so CI on PR #1 is the first
+  compile.
+- Anything on hardware. Bring-up order: an LIS3MDL on a host pin first, then on a node
+  channel.
+
+Overlaps upstream PR #465's mag pipeline; reconcile when it lands (`UPSTREAM-OVERLAP.md` §2).
+
+---
+
 ## 2026-10-12b — I2SPI spec, chained I2C fix, QEMU harness, upstream survey, E22 analysis
 
 **`docs/I2SPI.md` is now the normative v3 specification**, written to be the standard for

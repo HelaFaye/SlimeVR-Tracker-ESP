@@ -39,7 +39,11 @@ SensorToggleValues SensorToggleState::getValues() const { return values; }
 
 void SensorToggleState::emitToggleChange(SensorToggles toggle, bool state) const {
 	if (callback) {
-		(*callback)(toggle, state);
+		// Call a copy: a listener may replace this state, callback included (the BNO08x
+		// one re-reads its toggles from the configuration), and must not destroy the
+		// function that is running.
+		auto listener = *callback;
+		listener(toggle, state);
 	}
 }
 

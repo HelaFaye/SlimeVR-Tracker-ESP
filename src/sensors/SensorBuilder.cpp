@@ -131,6 +131,15 @@ uint8_t SensorBuilder::buildAllSensors() {
 		return I2SPI_WIRE_CH(nodeId, SlimeVR::ATTinyCS::DefaultChannel);
 	};
 
+	// A magnetometer on its own SPI chip select: a host pin, or a channel on an
+	// I2SPI node. Passed as the descriptor's last argument; the paired IMU's fusion
+	// polls it. Usually shares the IMUs' SPI bus (SPI mode 3 suits both supported
+	// parts), but any bus may be given.
+	[[maybe_unused]] const auto SPI_MAG
+		= [&](DirectSPIInterface* bus, PinInterface* cs) -> RegisterInterface* {
+		return interfaceManager.spiImpl().get(bus, cs);
+	};
+
 	// Apply descriptor list and expand to entries
 	SENSOR_DESC_LIST
 

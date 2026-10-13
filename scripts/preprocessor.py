@@ -8,13 +8,28 @@ Import("env")
 
 try:
     import jsonschema
-except:
-    env.Execute(
-        env.VerboseAction(
-            '$PYTHONEXE -m pip install "jsonschema==4.22.0"',
-            "Installing jsonschema for validation",
+except ImportError:
+    # Install into a project-local directory with the interpreter running this script,
+    # then import from there. $PYTHONEXE is not enough: pioarduino runs build scripts
+    # with its own virtualenv's paths (~/.platformio/penv), so a package installed into
+    # PlatformIO's Python stays invisible here. --target works whichever interpreter or
+    # sys.path is in use, and the running interpreter picks wheels that match it.
+    import importlib
+    import sys
+
+    _deps = os.path.join(env.subst("$PROJECT_DIR"), ".pio", "pydeps")
+    sys.path.insert(0, _deps)
+    try:
+        import jsonschema  # installed there by an earlier board's build
+    except ImportError:
+        env.Execute(
+            env.VerboseAction(
+                f'"{sys.executable}" -m pip install --quiet --upgrade --target "{_deps}" '
+                '"jsonschema==4.22.0"',
+                "Installing jsonschema for validation",
+            )
         )
-    )
+        importlib.invalidate_caches()
 
 from jsonschema import Draft202012Validator, exceptions as jsonschema_exceptions
 
@@ -81,6 +96,13 @@ def format_value(val: Any, typ: str, key: str = "<unknown>") -> str:
 # Kept byte-for-byte as the pre-configurable-SPI default so boards that predate the
 # "SPI" config block (notably BOARD_SLIMEVR_V1_2) generate exactly what they did before.
 LEGACY_SPI_BUS = "DIRECT_SPI(24'000'000, MSBFIRST, SPI_MODE3)"
+LEGACY_SPI_CLOCK = 24000000
+
+# Clock for a board "SPI" block that does not set one: safe on cable (I2SPI.md §3.2).
+SPI_DEFAULT_CLOCK = 4000000
+
+# Fastest SPI clock any supported SPI magnetometer accepts (MMC5983MA and LIS3MDL: 10 MHz).
+MAG_SPI_MAX_CLOCK = 10000000
 
 
 # The chain address is defined once, in ATTinyCSProtocol.h, which the node firmware also
@@ -213,7 +235,7 @@ def _format_spi_bus(spi: Optional[dict]) -> str:
     if not spi:
         return LEGACY_SPI_BUS
 
-    clock = spi.get('clock', 4000000)
+    clock = spi.get('clock', SPI_DEFAULT_CLOCK)
     bit_order = spi.get('bitOrder', 'MSBFIRST')
     mode = spi.get('mode', 'SPI_MODE3')
 
@@ -229,6 +251,44 @@ def _format_spi_bus(spi: Optional[dict]) -> str:
         f"{format_value(mode, 'raw')}, {format_value(sck, 'pin')}, "
         f"{format_value(miso, 'pin')}, {format_value(mosi, 'pin')})"
     )
+
+
+def _format_mag(mag: dict, spi_buses: dict, chains: dict) -> str:
+    """A magnetometer on its own SPI chip select, as the descriptor's last argument."""
+    bus_name = mag.get('bus', 'default')
+    if bus_name not in spi_buses:
+        raise ValueError(f"magnetometer names SPI bus {bus_name!r}, which SPI does not define")
+    # Same pins as the IMU's bus, but the mag's own settings: the supported parts
+    # (MMC5983MA, LIS3MDL) take 10 MHz at most, while an IMU bus may run faster (the
+    # legacy default is 24 MHz). SPISettings are applied per transaction, so both
+    # share one SPIClass safely.
+    #
+    # Mode follows the bus unless the mag overrides it. Both parts specify mode 3, but
+    # SparkFun found the MMC5983MA works only in mode 0 in practice, and keeping the
+    # bus's mode avoids flipping SCK's idle level between the IMU's and the mag's
+    # transactions.
+    configured = spi_buses.get(bus_name)
+    bus = dict(configured or {})
+    limit = int(mag.get('clock', MAG_SPI_MAX_CLOCK))
+    if limit > MAG_SPI_MAX_CLOCK:
+        raise ValueError(f"magnetometer clock {limit} exceeds {MAG_SPI_MAX_CLOCK} Hz")
+    # The bus's own clock when unset is what _format_spi_bus would use for it.
+    bus_clock = int(bus.get('clock', SPI_DEFAULT_CLOCK if configured else LEGACY_SPI_CLOCK))
+    bus['clock'] = min(bus_clock, limit)
+    bus['mode'] = mag.get('mode', bus.get('mode', 'SPI_MODE3'))
+    bus['bitOrder'] = 'MSBFIRST'
+    return (
+        f"SPI_MAG({_format_spi_bus(bus)}, "
+        f"{_format_chip_select(mag.get('cs'), chains)})"
+    )
+
+
+def _desc_entry(params: List[str], sensor: dict, spi_buses: dict, chains: dict) -> str:
+    """SENSOR_DESC_ENTRY(...), with SPI_MAG(...) appended when the sensor has a "mag".
+    params must already hold all seven positional arguments, extraParam included."""
+    if sensor.get('mag'):
+        params = [*params, _format_mag(sensor['mag'], spi_buses, chains)]
+    return f"SENSOR_DESC_ENTRY({','.join(params)})"
 
 
 def _build_board_flags(defaults: dict, board_name: str) -> List[str]:
@@ -301,7 +361,7 @@ def _build_board_flags(defaults: dict, board_name: str) -> List[str]:
                     f"DIRECT_PIN({format_value(sensor.get('int', 255), 'pin')})",
                     '0'
                 ]
-                sensor_list.append(f"SENSOR_DESC_ENTRY({','.join(params)})")
+                sensor_list.append(_desc_entry(params, sensor, spi_buses, chains))
                 continue
 
             if sensor.get('protocol') == 'I2C':
@@ -314,7 +374,7 @@ def _build_board_flags(defaults: dict, board_name: str) -> List[str]:
                     f"DIRECT_PIN({format_value(sensor.get('int', 255), 'pin')})",
                     '0'
                 ]
-                sensor_list.append(f"SENSOR_DESC_ENTRY({','.join(params)})")
+                sensor_list.append(_desc_entry(params, sensor, spi_buses, chains))
                 add('PIN_IMU_SDA', sensor.get('sda'), 'pin')
                 add('PIN_IMU_SCL', sensor.get('scl'), 'pin')
 
@@ -328,7 +388,7 @@ def _build_board_flags(defaults: dict, board_name: str) -> List[str]:
                     f"DIRECT_PIN({format_value(sensor.get('int', 255), 'pin')})",
                     '0'
                 ]
-                sensor_list.append(f"SENSOR_DESC_ENTRY({','.join(params)})")
+                sensor_list.append(_desc_entry(params, sensor, spi_buses, chains))
 
             # serialcommands.cpp prints PIN_IMU_INT unconditionally, and add() skips
             # None, so a sensor without an `int` produced a config that fails to build.

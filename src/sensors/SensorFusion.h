@@ -78,6 +78,9 @@ public:
 	void updateBiasForgettingTime(float biasForgettingTime);
 
 	[[nodiscard]] bool getRestDetected() const;
+	/// Stop using the magnetometer until it delivers a sample again. Without this a
+	/// mag switched off at run time left the fusion in 9D on its last sample.
+	void disableMag() { magExist = false; }
 
 protected:
 	sensor_real_t gyrTs;

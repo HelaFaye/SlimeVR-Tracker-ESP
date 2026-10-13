@@ -171,4 +171,9 @@ void Sensor::setFlag(SensorToggles toggle, bool state) {
 
 	configuration.setSensorToggles(sensorId, toggles);
 	configuration.save();
+
+	// Only now, with the new state saved: the BNO08x listener reconfigures the sensor
+	// from the configuration, and would otherwise apply (and then save) the old value.
+	// Without any notification, a runtime toggle did nothing until a reboot.
+	toggles.emitToggleChange(toggle, state);
 }

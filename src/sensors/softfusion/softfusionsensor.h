@@ -160,7 +160,11 @@ public:
 		float rotation,
 		SlimeVR::SensorInterface* sensorInterface = nullptr,
 		PinInterface* intPin = nullptr,
-		uint8_t = 0
+		uint8_t = 0,
+		// A magnetometer on its own chip select (SPI), polled by the host. When set it
+		// takes precedence over one behind the IMU's aux master. Any SoftFusion IMU can
+		// use one, not only those with an aux master.
+		RegisterInterface* magInterface = nullptr
 	)
 		: Sensor(
 			SensorType::Name,
@@ -176,7 +180,8 @@ public:
 			  SensorType::AccTs,
 			  SensorType::MagTs
 		  )
-		, m_sensor(registerInterface, m_Logger) {}
+		, m_sensor(registerInterface, m_Logger)
+		, m_magInterface(magInterface) {}
 	~SoftFusionSensor() override = default;
 
 	void checkSensorTimeout() {
@@ -200,6 +205,25 @@ public:
 	}
 
 	void motionLoop() final {
+		// Magnetometer first, at the fusion's fixed mag period. Polling one behind an
+		// I2SPI node can move the I2C peripheral to the chain's pins (the arm write),
+		// so after a read put this sensor's own bus back before anything touches the
+		// IMU.
+		if (magDriver.isMagAttached()) {
+			const bool touchedBus = magDriver.poll(
+				micros(),
+				SensorType::MagTs,
+				[&](const float scaled[3]) {
+					// sensor_real_t is double under SENSORS_DOUBLE_PRECISION.
+					const sensor_real_t mag[3] = {scaled[0], scaled[1], scaled[2]};
+					m_fusion.updateMag(mag);
+				}
+			);
+			if (touchedBus && m_magInterface && m_hwInterface) {
+				m_hwInterface->swapIn();
+			}
+		}
+
 		calibrator.tick();
 
 		// read fifo updating fusion
@@ -331,34 +355,67 @@ public:
 
 		calibrator.checkStartupCalibration();
 
-		if constexpr (Consts::SupportsMags) {
+		if (m_magInterface != nullptr) {
+			// Own chip select: the host reads it directly over SPI.
+			auto* mag = m_magInterface;
+			if (!magDriver.init(
+					SoftFusion::MagInterface{
+						.transport = SoftFusion::MagTransport::Spi,
+						.readByte = [mag](uint8_t reg) { return mag->readReg(reg); },
+						.writeByte =
+							[mag](uint8_t reg, uint8_t value) {
+								mag->writeReg(reg, value);
+							},
+						.readBytes =
+							[mag](uint8_t reg, uint8_t* buffer, size_t length) {
+								// An SPI read has no failure the host can see.
+								mag->readBytes(
+									reg,
+									static_cast<uint8_t>(length),
+									buffer
+								);
+								return true;
+							},
+						.setDeviceId = [](uint8_t) {},
+					},
+					// The host reads any width over SPI; the 9-byte limit is the
+					// IMU aux master's.
+					true
+				)) {
+				m_Logger.warn(
+					"No supported magnetometer answered on %s",
+					mag->toString().c_str()
+				);
+			}
+			if (m_hwInterface) {
+				m_hwInterface->swapIn();
+			}
+		} else if constexpr (Consts::SupportsMags) {
 			magDriver.init(
 				SoftFusion::MagInterface{
+					.transport = SoftFusion::MagTransport::ImuAux,
 					.readByte
 					= [&](uint8_t address) { return m_sensor.readAux(address); },
 					.writeByte = [&](uint8_t address, uint8_t value
 								 ) { m_sensor.writeAux(address, value); },
+					.readBytes
+					= [&](uint8_t address, uint8_t* buffer, size_t length
+					  ) { return m_sensor.readAux(address, buffer, length); },
 					.setDeviceId
 					= [&](uint8_t deviceId) { m_sensor.setAuxId(deviceId); },
-					.startPolling
-					= [&](uint8_t dataReg, SoftFusion::MagDataWidth dataWidth
-					  ) { m_sensor.startAuxPolling(dataReg, dataWidth); },
-					.stopPolling = [&]() { m_sensor.stopAuxPolling(); },
 				},
 				Consts::Supports9ByteMag
 			);
-
-			if (toggles.getToggle(SensorToggles::MagEnabled)) {
-				magDriver.startPolling();
-			}
 		}
+
+		magDriver.setPollingEnabled(toggles.getToggle(SensorToggles::MagEnabled));
 
 		toggles.onToggleChange([&](SensorToggles toggle, bool value) {
 			if (toggle == SensorToggles::MagEnabled) {
-				if (value) {
-					magDriver.startPolling();
-				} else {
-					magDriver.stopPolling();
+				magDriver.setPollingEnabled(value);
+				if (!value) {
+					// Back to 6D now, not on the next reboot.
+					m_fusion.disableMag();
 				}
 			}
 		});
@@ -369,6 +426,9 @@ public:
 	}
 
 	[[nodiscard]] bool isFlagSupported(SensorToggles toggle) const final {
+		if (toggle == SensorToggles::MagEnabled) {
+			return magDriver.isMagAttached();
+		}
 		return toggle == SensorToggles::CalibrationEnabled
 			|| toggle == SensorToggles::TempGradientCalibrationEnabled;
 	}
@@ -388,6 +448,7 @@ public:
 	RestCalibrationDetector calibrationDetector;
 
 	SoftFusion::MagDriver magDriver;
+	RegisterInterface* m_magInterface = nullptr;
 
 	static bool checkPresent(const RegisterInterface& imuInterface) {
 		I2Cdev::readTimeout = 100;
