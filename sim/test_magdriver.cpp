@@ -42,6 +42,7 @@ struct FakeMag {
 	uint8_t i2cAddress = 0;  // for aux: only answer when selected
 
 	bool selected = true;
+	bool failReads = false;  // aux master reports an error
 
 	MagInterface interface(MagTransport transport) {
 		return MagInterface{
@@ -55,16 +56,19 @@ struct FakeMag {
 			},
 			.writeByte
 			= [this](uint8_t reg, uint8_t value) { writes.emplace_back(reg, value); },
-			.readBytes =
-				[this](uint8_t reg, uint8_t* buffer, size_t length) {
-					burstReads.push_back(reg);
-					// Strip whichever auto-increment flag the part uses; a model only
-					// sees the register index.
-					uint8_t base = reg & 0x3f;
-					for (size_t i = 0; i < length; i++) {
-						buffer[i] = regs.count(base + i) ? regs[base + i] : 0;
-					}
-				},
+			.readBytes = [this](uint8_t reg, uint8_t* buffer, size_t length) -> bool {
+				burstReads.push_back(reg);
+				if (failReads) {
+					return false;
+				}
+				// Strip whichever auto-increment flag the part uses; a model only
+				// sees the register index.
+				uint8_t base = reg & 0x3f;
+				for (size_t i = 0; i < length; i++) {
+					buffer[i] = regs.count(base + i) ? regs[base + i] : 0;
+				}
+				return true;
+			},
 			.setDeviceId =
 				[this](uint8_t id) {
 					deviceIds.push_back(id);
@@ -281,12 +285,44 @@ static void scalingEdges() {
 	);
 }
 
+static void failedRead() {
+	std::printf("\n== A failed read delivers no sample ==\n");
+	FakeMag mmc;
+	mmc.regs[0x2f] = 0x30;
+	MagDriver driver;
+	driver.init(mmc.interface(MagTransport::Spi), false);
+	driver.setPollingEnabled(true);
+	mmc.failReads = true;
+	int samples = 0;
+	g_micros += 20'000;
+	const bool touched = driver.poll(g_micros, 0.01f, [&](const float*) { samples++; });
+	check(
+		touched && samples == 0,
+		"read attempted, nothing handed to the fusion (an MMC zero buffer is full "
+		"scale)"
+	);
+	mmc.failReads = false;
+	g_micros += 10'000;
+	driver.poll(g_micros, 0.01f, [&](const float*) { samples++; });
+	check(samples == 1, "next period reads normally");
+	// Drain the bounded catch-up (one missed period may still be owed), then 1 ms on
+	// nothing is due.
+	while (driver.poll(g_micros, 0.01f, [&](const float*) {})) {
+	}
+	g_micros += 1'000;
+	check(
+		!driver.poll(g_micros, 0.01f, [&](const float*) {}),
+		"poll reports no bus traffic when nothing was due"
+	);
+}
+
 int main() {
 	mmc5983maOverSpi();
 	lis3mdlOverSpiAndAux();
 	pollingCadence();
 	noMagnetometer();
 	scalingEdges();
+	failedRead();
 	std::printf("\n%d checks, %d failed\n", checks, failures);
 	return failures ? 1 : 0;
 }

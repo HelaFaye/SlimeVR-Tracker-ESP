@@ -152,7 +152,11 @@ high. The host then frames each transaction by toggling one GPIO. I2C traffic sc
   (§4.3).
 - Budget per reference node: ~5.4 mA (ICM-45686 0.42 mA + QMC6309 2.0 mA at the ODR/OSR the
   firmware selects + ATtiny412 ~3 mA). Current traverses two conductors (VBUS out, GND
-  back); 26 AWG is ~0.27 Ω/m round trip, so a two-node chain at 0.85 m drops ~2.5 mV.
+  back).
+- **Conductor gauge.** Flat patch cable is commonly **32 AWG** (~1.08 Ω/m round trip);
+  round patch cable is 24–26 AWG (26 AWG: ~0.27 Ω/m). Design for 32 AWG unless the cable is
+  specified. A two-node chain at 0.85 m then drops ~9.9 mV, which is negligible. How many
+  nodes a longer chain can feed is in §14.2.
 - Nodes that add LEDs or other loads **SHOULD** regulate locally.
 
 ---
@@ -264,8 +268,11 @@ has two ways to carry one; the host fuses either with the IMU it is configured a
 
 **A. Behind the IMU's auxiliary I2C master** (reference, DEC-008). The mag sits on a
 private two-wire bus behind its own IMU, so it costs no chain traffic and no extra
-channel. Only IMUs with an aux master qualify (ICM-456xx). Supported: QMC6309, IST8306,
-LIS3MDL.
+channel. Only IMUs whose driver implements the aux master qualify: today the ICM-456xx.
+(BMI160/270 and the LSM6DS family have aux masters in hardware; the firmware does not
+drive them.) Supported: QMC6309, IST8306, MMC5983MA, LIS3MDL. Each sample costs the host
+one aux burst read through the IMU: about 20 SPI register transactions and a wait of
+roughly 0.25 ms (estimate) while the IMU runs the I2C read.
 
 **B. On its own SPI channel** (DEC-017). The mag shares the cable's SCK, MOSI and MISO and
 takes a **second gated SPI channel** on the node, exactly like a second IMU would. Works
@@ -274,15 +281,31 @@ with every SoftFusion IMU, aux master or not. The reference ATtiny412 node has o
 74LVC1G32. Supported: MMC5983MA, LIS3MDL.
 
 - The mag channel **MUST** be gated like any SPI channel (§4.2). The mag's MISO **MUST**
-  be tri-stated whenever its CS is high, which both supported parts do.
-- The host runs the mag at **SPI mode 3, MSB first, at most 10 MHz**, whatever the IMU's
-  bus settings; `SPISettings` are applied per transaction. A board config may lower the
-  clock (`"mag": {"cs": ..., "clock": ...}`) but not raise it.
-- Each mag read is one chain arm (when switching from the IMU) plus one 7-byte SPI
-  transfer, at the fusion's mag rate (100 Hz). The host re-selects the IMU afterwards.
+  be tri-stated whenever its CS is high. Both supported parts are SPI-mode slaves that
+  drive SDO only while selected (MMC5983MA datasheet Rev A, SPI timing; LIS3MDL datasheet,
+  SPI interface). Confirm on the scope at bring-up.
+- The host runs the mag **MSB first, at most 10 MHz** (both parts' limit), and never
+  faster than its bus. The SPI mode follows the bus unless the board config overrides it
+  (`"mag": {"cs": ..., "clock": ..., "mode": ...}`). Both datasheets specify mode 3, but
+  SparkFun reports the MMC5983MA working only in mode 0, so bring it up at ~2 MHz and try
+  both. `SPISettings` are applied per transaction, so the IMU keeps its own.
+- With the CS high, both parts also listen as I2C slaves on SCK/MOSI (MMC5983MA at `0x30`,
+  LIS3MDL at `0x1C`/`0x1E`). IMU traffic would have to form an I2C START and address by
+  chance for one to answer. Unlikely, but a reason not to share their SCK with an
+  unrelated fast bus.
+- Each mag read costs **two** chain arms when the mag and IMU are on different targets
+  (one to the mag, and one back to the IMU at its next transaction), plus a 7-byte SPI
+  transfer. At 400 kHz that adds ~102 µs per sensor per 5 ms cycle (§14.2).
 
-In both cases the host polls the mag at a fixed period, because VQF assumes one. Samples
-are not taken from the IMU FIFO.
+In both cases the host polls the mag at the IMU driver's `MagTs` (100 Hz on the
+ICM-45686, 120 Hz on the LSM6DSO/DSR/DSV), because VQF assumes a fixed period. Samples are
+not taken from the IMU FIFO.
+
+**Orientation and calibration.** The firmware feeds the mag's own axes to the fusion,
+which assumes they match the IMU's. Lay the mag out with its X, Y and Z parallel to the
+IMU's, with the same signs: there is no per-mag axis remap yet. Nor is there hard-iron or
+soft-iron calibration for SoftFusion mags, so keep them away from the battery, speakers
+and ferrous parts.
 
 ### 4.6 What bypasses the node
 
@@ -525,16 +548,20 @@ Before every transaction burst, the host **MUST**:
 |---|---|---|
 | CS_STROBE → sensor CS, strobe mode | < 100 ns, combinational | §4.2 |
 | `ARM` written → gated signal valid | 2 µs | `ArmSettleMicros` |
-| One frame on the wire | ~95 µs at 400 kHz, ~38 µs at 1 MHz | 4 bytes incl. address |
+| One frame on the wire | ~95 µs at 400 kHz (~38 µs at 1 MHz, §14.2) | 4 bytes incl. address |
 | Software-CS framed transaction | ~190 µs at 400 kHz | bring-up only |
 | Sensor supply off → may be re-enabled | ≥ 100 µs | `SensorPowerOffHoldMicros` |
 | Sensor supply on → sensors respond | 15 ms | `SensorPowerOnSettleMillis` (QMC6309 PSUP < 10 ms + PORT < 3 ms, plus margin) |
 
-Worked numbers (recomputed from the constants by `sim/check_numbers.py` on every run):
+Worked numbers (wire time only, a lower bound; each is pinned in `sim/check_numbers.py`,
+which recomputes it from the constants and fails if it moves):
 
 - 4 sensors at 200 Hz on a 400 kHz chain: 4 arm writes per 5 ms cycle ≈ 380 µs ≈ 7.6 %.
-- 16 sensors at 200 Hz: I2C 1.52 ms + SPI 0.64 ms at 4 MHz ≈ 43 % of the cycle (25 % with
-  1 MHz I2C). Use Fast-mode Plus or a lower ODR.
+- One ICM-45686 visit reads FIFO_COUNT, then at least one 20-byte packet: 24 bytes with
+  the address bytes, 48 µs at 4 MHz.
+- 16 sensors at 200 Hz: I2C 1.52 ms + SPI 0.77 ms ≈ 46 % of the cycle. Lower the output
+  rate, or split the sensors across hosts; Fast-mode Plus is not available on the reference
+  host (§14.2).
 - How many sensors fit in a cycle at all: §14.2.
 
 ---
@@ -627,9 +654,11 @@ Run everything with `./VERIFY.sh`; CI runs it on every pull request.
 
 ## 14. Limits, scaling and open questions
 
-Every figure in §14.1–14.5 is recomputed by `sim/check_numbers.py` from the protocol
-constants and from declared physical values. Values marked *estimate* are inputs to measure
-at bring-up, not results.
+Every figure in §14.1–14.5 is pinned in `sim/check_numbers.py`, which recomputes it from the
+protocol constants and declared physical values and fails if it moves. (It does not read
+this file: change a figure in both places.) Values marked *estimate* are inputs to measure
+at bring-up, not results. Bus times are wire time only, so they are lower bounds: the host
+also spends time between bytes.
 
 ### 14.1 Hard limits of protocol v3
 
@@ -641,54 +670,71 @@ at bring-up, not results.
 | Chains sharing one I2C bus | **7** | Entries in `AddressWhitelist` (§5.1, §11) |
 | Targets on one I2C bus | **1,680** | 7 × 240 |
 | Chains on separate pins | No protocol limit | Host GPIOs: three per chain (SDA, SCL, strobe), fewer if chains share an I2C bus |
-| Enumeration time, full chain | **225 ms**, once at boot | 15 × `SensorPowerOnSettleMillis` (§9.1) |
+| Bring-up time, full chain | **~228 ms**, once at boot | Power staging, 15 × `SensorPowerOnSettleMillis` = 225 ms, plus ~3.2 ms probing ids 1–15 (§9.1) |
 | Sensors per tracker (reference firmware) | **16** | The board-config schema; `MAX_SENSORS_COUNT` is generated from the list. A choice, not a protocol limit |
 
 Selection is one-hot (§9.3), so more channels or more nodes add **addresses**, never
-**bandwidth**. Every target shares one SPI bus and one I2C bus.
+**bandwidth**. Every target on a host shares one SPI bus and the host's one I2C peripheral
+(§14.3).
 
 ### 14.2 What binds first
 
 Long before addressing runs out, one of these does. In rough order:
 
-**1. Bus time.** In the worst case every sensor needs its own `ARM` (95 µs at 400 kHz,
-38 µs at 1 MHz) plus its FIFO burst (40 µs at 4 MHz SPI): **135 µs** per sensor per cycle at
-400 kHz, **78 µs** at 1 MHz. At 200 Hz (a 5 ms cycle):
+**1. Bus time.** The host visits every sensor on every loop pass, and each visit to a
+chained sensor costs an `ARM` (95 µs at 400 kHz) plus its FIFO read (48 µs at 4 MHz SPI,
+§10): **143 µs** per sensor per cycle. At 200 Hz (a 5 ms cycle):
 
-| | 400 kHz I2C | 1 MHz I2C |
+| | 400 kHz (reference) | 1 MHz (Fast-mode Plus) | 100 kHz |
+|---|---|---|---|
+| Per sensor | 143 µs | 86 µs | 428 µs |
+| Sensors that fill the whole cycle | 34 | 58 | — |
+| Sensors in half the cycle (leaving time for fusion and Wi-Fi) | **17** | 29 | 5 |
+
+- **The reference host is limited to 400 kHz.** The ESP32-C5's I2C controller does
+  Standard and Fast mode only, and the firmware fixes `I2C_SPEED` at 400 kHz for every bus.
+  The 1 MHz column needs a Fast-mode-Plus host and nodes, a firmware change, and much
+  stronger pull-ups (limit 2).
+- **Magnetometers add to this.** An SPI mag on its own node channel (§4.5 B) costs two more
+  arms and a 7-byte read every 10 ms, ~102 µs per 5 ms cycle at 400 kHz: 245 µs per
+  sensor, so **10** sensors in half the cycle. An aux mag (§4.5 A) costs no chain time but
+  ~0.25 ms of host time per sample (estimate).
+
+Halving the output rate doubles these. Raising the SPI clock helps only the 48 µs term.
+**A realistic ceiling on the reference host is about 17 sensors at 200 Hz** (10 with SPI
+mags), whatever the chain count, since the host's time is shared by all of its chains.
+
+**2. I2C bus capacitance.** Fast mode allows a 300 ns rise time (Fast-mode Plus 120 ns).
+With a pull-up `R`, the bus may carry at most `t_r / (0.8473 R)`:
+
+| Pull-up | Fast mode (400 kHz) | Fast-mode Plus (1 MHz) |
 |---|---|---|
-| Sensors that fill the whole cycle | 37 | 64 |
-| Sensors in half the cycle (leaving time for fusion and Wi-Fi) | **18** | **32** |
+| 2.2 kΩ (default, §3.1) | ~160 pF | ~64 pF |
+| ~970 Ω (strongest Fast-mode pull-up at VOL 0.4 V, 3 mA) | ~365 pF | — |
+| ~145 Ω (strongest Fast-mode-Plus pull-up, 20 mA) | — | 550 pF (the spec's cap) |
 
-Halving the output rate doubles these. Raising the SPI clock helps only the 40 µs term.
-**A realistic ceiling is 18–32 sensors per host at 200 Hz**, whatever the chain count, since
-the host's time is shared by all of its chains.
-
-**2. I2C bus capacitance.** Fast mode allows a 300 ns rise time. With a pull-up `R`, the bus
-may carry at most `300 ns / (0.8473 R)`:
-
-| Pull-up | Bus capacitance it can drive at 400 kHz |
-|---|---|
-| 2.2 kΩ (default, §3.1) | ~160 pF |
-| ~970 Ω (strongest allowed: 3 mA sink at 0.4 V) | ~365 pF |
-
-Each node adds an estimated 15 pF per line (MCU pin, two jacks, traces), and the cable adds
-~60 pF/m. So:
+Each node adds an estimated 15 pF per line (MCU pin, two jacks, traces), the cable ~60 pF/m,
+and the host's own pin and traces a little more. So:
 
 - Two nodes on the 2.2 kΩ default leave room for ~2.2 m of cable.
 - **15 nodes alone exceed what 2.2 kΩ can drive at 400 kHz.** A full chain needs ~1 kΩ
   pull-ups, and then has room for ~2.35 m of cable.
-- Past that: 100 kHz (which hurts limit 1 fourfold), an active I2C terminator or buffer,
-  or more, shorter chains.
+- At Fast-mode Plus, 2.2 kΩ drives fewer than five nodes and no cable. A full chain plus
+  2 m (~345 pF) needs ~410 Ω.
+- Past these: 100 kHz (`ARM` 380 µs, about 5 sensors in half a 200 Hz cycle), an active
+  I2C buffer, or more, shorter chains.
 
 **3. SPI on cable.** SCK, MOSI, MISO and CS_STROBE run unterminated past every node's stub,
 and MISO carries every sensor's tri-stated output pin. Each node lowers the usable clock.
 There is no formula worth trusting here: measure the ceiling per build (§3.2).
 
-**4. Supply.** VBUS and GND are one conductor each (26 AWG, ~0.27 Ω/m round trip). A full
-chain of reference nodes draws ~81 mA and drops ~43 mV over 2 m, which is fine. Allowing
-100 mV of sag, 2 m of cable carries at most **~187 mA**. That budget is what rules out heavy
-nodes (§14.5).
+**4. Supply.** VBUS and GND are one conductor each. On flat 32 AWG cable (§3.3, ~1.08 Ω/m
+round trip) a full chain of reference nodes draws ~81 mA and drops **~175 mV** over 2 m.
+Allowing 100 mV of sag, 2 m of flat cable carries only **~46 mA**: about **8** reference
+nodes. On 26 AWG round cable the same chain drops ~43 mV, and 2 m carries ~187 mA. The
+sensors themselves tolerate more sag than 100 mV (check each part's minimum VDD), so this
+budget is a choice, not a cliff. For long or full chains, specify the cable or regulate
+at the nodes.
 
 **5. Software.** The 16-sensor schema ceiling is easy to raise. The server's behaviour with
 more than 16 sensors on one tracker, and the Wi-Fi packet rate that implies, are
@@ -703,8 +749,9 @@ Under v3, with no protocol change:
   not the chain.
 - **Chains on separate I2C pins**, which also splits the capacitance (limit 2). The
   reference host moves one `Wire` peripheral between pin sets, so these chains still share
-  I2C time (limit 1). Running two truly in parallel would need a host with a second I2C
-  peripheral (ESP32, ESP32-S3) and host changes that do not exist yet.
+  I2C time (limit 1). Running two truly in parallel would need a second I2C peripheral
+  (ESP32 and ESP32-S3 have two; the ESP32-C5 has a second, low-power, master-only one) and
+  host changes that do not exist yet.
 - **Nodes with more channels** (ATtiny414/1614, or external gates). These save boards,
   parts and power at a site, but not time (§14.1).
 
@@ -715,10 +762,10 @@ This is the recommended path. Limit 1 caps a host well below 15 fully used nodes
 
 If a future design needs more than 15 nodes on one chain:
 
-- **The `ARM` value byte alone is not enough.** `ARM` ignores its value today, so it could
-  carry the high bits of the node id. But the addressed commands (`SET_CS`, `SET_MODE`,
-  `SET_SENSOR_POWER`, `SET_SENSOR_RESET`) already use their value byte, so the extension
-  would cover arming and nothing else.
+- **The value byte alone is not enough.** `ARM` and `IDENTIFY` ignore their value today,
+  so it could carry the high bits of the node id. But the addressed configuration commands
+  (`SET_CS`, `SET_MODE`, `SET_SENSOR_POWER`, `SET_SENSOR_RESET`) already use their value
+  byte, so the extension would cover arming and identification and nothing else.
 - **A four-byte frame** (opcode, node-high, target, value) extends every command: up to
   4,095 nodes × 16 channels. `ARM` grows to ~117.5 µs at 400 kHz, making limit 1 worse for
   every chain.
@@ -741,16 +788,17 @@ unlikely.
   shared.
 - **Interfaces.** Most image sensors output parallel video (DVP, 8+ data lines plus a pixel
   clock at tens of MHz) or MIPI CSI (differential pairs). Neither fits §2.1.
-- **Power.** A small camera module draws an estimated 80 mA, and the 187 mA budget in
-  §14.2 covers **two** such nodes on 2 m of cable. A camera chain would need a higher VBUS
-  with regulation at each node, which is a change to §3.
+- **Power.** A small camera module draws an estimated 80 mA. The 100 mV budget in §14.2
+  covers **two** such nodes on 2 m of 26 AWG cable, and **none** on flat 32 AWG. A camera
+  chain would need a higher VBUS with regulation at each node, which is a change to §3.
 
 **What does fit:**
 
 - **Sensors that report results, not images.** An IR blob tracker of the Pixart PAJ7025
-  kind reports a few bytes of coordinates per frame, comparable to an IMU's FIFO. If its
-  SPI variant tri-states MISO when deselected, it is an ordinary SPI channel (§4.2).
-  Confirm both points against the datasheet first.
+  kind (the PAJ7025R2 has SPI) reports a record per tracked object, up to 16 objects, at up
+  to ~200 frames/s. That is far less than video, though several times an IMU's FIFO read:
+  size it from the datasheet's report format. If it tri-states MISO when deselected, it is
+  an ordinary SPI channel (§4.2).
 - **Configuration of identical cameras.** Image sensors are configured over SCCB, which is
   I2C-like with fixed addresses. A gated I2C channel (§4.2, DEC-016) isolates each one, the
   same way chained I2C IMUs are isolated.
@@ -783,6 +831,8 @@ compilation and static checks. Settle these at bring-up:
   `I2CM_RESTART_EN = 1` first (`icm45base.h`).
 - **SPI clock on cable.** 4 MHz is the conservative start. The usable ceiling for a given
   length is a measurement, not a calculation.
+- **Magnetometer orientation and calibration.** No per-mag axis remap and no hard- or
+  soft-iron calibration yet (§4.5).
 - **Deliberately unsupported:** hot-plug; runtime node ids; bulk transfer through a node;
   more than one gated signal per channel; any pinout other than §2.1.
 

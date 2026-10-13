@@ -60,8 +60,9 @@ struct MagInterface {
 	std::function<uint8_t(uint8_t)> readByte;
 	std::function<void(uint8_t, uint8_t)> writeByte;
 	/// Burst read starting at a register. The caller has already applied the part's
-	/// auto-increment flag for this transport.
-	std::function<void(uint8_t, uint8_t*, size_t)> readBytes;
+	/// auto-increment flag for this transport. False if the read failed; no sample is
+	/// then delivered.
+	std::function<bool(uint8_t, uint8_t*, size_t)> readBytes;
 	/// Aux only: which I2C device the IMU's master talks to. No-op on SPI.
 	std::function<void(uint8_t)> setDeviceId;
 };
@@ -108,7 +109,10 @@ public:
 	/// microtesla and hands it to `onSample`. Polls at a fixed period so the fusion's
 	/// mag filter, which is built for one sample period, sees a steady rate. A
 	/// magnetometer slower than that period just repeats its last sample.
-	void poll(
+	///
+	/// Returns true when it touched the bus (a read was due), whether or not the read
+	/// succeeded, so the caller knows to re-select its own sensor.
+	bool poll(
 		uint32_t nowMicros,
 		float periodSeconds,
 		const std::function<void(const float scaled[3])>& onSample

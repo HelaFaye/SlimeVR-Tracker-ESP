@@ -200,19 +200,19 @@ void MagDriver::setPollingEnabled(bool enabled) {
 	lastPollMicros = micros();
 }
 
-void MagDriver::poll(
+bool MagDriver::poll(
 	uint32_t nowMicros,
 	float periodSeconds,
 	const std::function<void(const float scaled[3])>& onSample
 ) {
 	if (!pollingEnabled || !detectedMag) {
-		return;
+		return false;
 	}
 
 	const auto period = static_cast<uint32_t>(periodSeconds * 1e6f);
 	const uint32_t elapsed = nowMicros - lastPollMicros;
 	if (elapsed < period) {
-		return;
+		return false;
 	}
 	// Keep the cadence steady, but do not try to catch up after a long stall: the
 	// fusion only wants the current field.
@@ -224,11 +224,16 @@ void MagDriver::poll(
 	const size_t length = detectedMag->dataWidth == MagDataWidth::SixByte ? 6 : 9;
 
 	uint8_t raw[9] = {};
-	interface.readBytes(detectedMag->dataReg | burstFlag, raw, length);
+	if (!interface.readBytes(detectedMag->dataReg | burstFlag, raw, length)) {
+		// Do not scale garbage: on parts with a zero offset (MMC5983MA) an all-zero
+		// buffer reads as a full-scale field.
+		return true;
+	}
 
 	float scaled[3];
 	scaleMagSample(*detectedMag, raw, scaled);
 	onSample(scaled);
+	return true;
 }
 
 void MagDriver::scaleMagSample(

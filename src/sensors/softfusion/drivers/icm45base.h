@@ -20,6 +20,8 @@
 
 #pragma once
 
+#include <Arduino.h>
+
 #include <algorithm>
 #include <array>
 #include <cstdint>
@@ -388,11 +390,12 @@ struct ICM45Base {
 	}
 
 	/// Burst read through the aux master: up to 15 bytes (the burst length field is
-	/// four bits). Same shape as upstream PR #465's multi-byte readAux.
-	void readAux(uint8_t address, uint8_t* buffer, size_t length) {
+	/// four bits). Same shape as upstream PR #465's multi-byte readAux. False if the
+	/// transaction failed or timed out; the buffer is then not meaningful.
+	bool readAux(uint8_t address, uint8_t* buffer, size_t length) {
 		if (length == 0 || length > 15) {
 			m_Logger.error("Aux burst of %u bytes is out of range", unsigned(length));
-			return;
+			return false;
 		}
 
 		writeBankRegister<typename BaseRegs::I2CMDevProfile0>(address);
@@ -409,20 +412,35 @@ struct ICM45Base {
 			| (0b1 << 0)  // I2CM_GO
 		);
 
-		uint8_t lastStatus;
-		while ((lastStatus = readBankRegister<typename BaseRegs::I2CMStatus>())
-			   & BaseRegs::I2CMStatus::Busy)
-			;
-
+		const uint8_t lastStatus = waitForAux();
 		if (lastStatus != BaseRegs::I2CMStatus::Done) {
 			m_Logger.error(
 				"Aux read from address 0x%02x returned status 0x%02x",
 				address,
 				lastStatus
 			);
+			return false;
 		}
 
 		readBankRegister<typename BaseRegs::I2CMRdData0>(buffer, length);
+		return true;
+	}
+
+	/// Wait for the aux master to finish, at most AuxTimeoutMicros. A 15-byte burst at
+	/// 400 kHz takes well under 1 ms; a wedged aux bus used to hang here forever, which
+	/// now that mags are polled at run time would stall the main loop into a watchdog
+	/// reset. Returns the last status read (Busy still set on timeout).
+	uint8_t waitForAux() {
+		static constexpr uint32_t AuxTimeoutMicros = 5000;
+		const uint32_t start = micros();
+		uint8_t status;
+		while ((status = readBankRegister<typename BaseRegs::I2CMStatus>())
+			   & BaseRegs::I2CMStatus::Busy) {
+			if (micros() - start > AuxTimeoutMicros) {
+				break;
+			}
+		}
+		return status;
 	}
 
 	void writeAux(uint8_t address, uint8_t value) {
@@ -447,11 +465,7 @@ struct ICM45Base {
 			| (0b1 << 0)  // Start transaction
 		);
 
-		uint8_t lastStatus;
-		while ((lastStatus = readBankRegister<typename BaseRegs::I2CMStatus>())
-			   & BaseRegs::I2CMStatus::Busy)
-			;
-
+		const uint8_t lastStatus = waitForAux();
 		if (lastStatus != BaseRegs::I2CMStatus::Done) {
 			m_Logger.error(
 				"Aux write to address 0x%02x with value 0x%02x returned status 0x%02x",

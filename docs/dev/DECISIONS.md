@@ -251,8 +251,9 @@ getting the mag for free is exactly the right shape.
 
 **Amended 2026-10-13.** The FIFO path was never implemented: upstream's
 `startAuxPolling` is a TODO stub, and open PR #465 does not add it either. The host now
-polls the mag through the aux master at the fusion's fixed mag period (DEC-017). So a mag
-costs one aux-read transaction per 10 ms on the IMU's own bus, still **zero** chain I2C
+polls the mag through the aux master at the fusion's fixed mag period (DEC-017). So each
+sample costs one aux burst read: about 20 SPI register transactions on the IMU's own bus
+and a ~0.25 ms wait while the IMU runs the I2C read (estimate). Still **zero** chain I2C
 traffic. The address-collision argument above is unchanged.
 
 **Consequence for the node board.** The node carries ICM-45686 + QMC6309 with two extra
@@ -485,9 +486,10 @@ Reducing to 8 nodes would fit, in exactly one window, three addresses wide — o
 display and it breaks. Collapsing to a single address is not a squeeze, it is the shape
 the problem actually has.
 
-**What it costs.** Frames grow from 2 bytes to 3, so an `ARM` is ~90 µs at 400 kHz rather
-than ~72. That is the hot path, so it is a real cost — about 25% more I2C time per sensor
-switch, still a few percent of a poll cycle.
+**What it costs.** Frames grow from 2 bytes to 3, so an `ARM` (with its address byte) is
+~95 µs at 400 kHz rather than ~72.5. That is the hot path, so it is a real cost — about 31%
+more I2C time per sensor switch, still a few percent of a poll cycle. (Corrected
+2026-10-13; first written as ~90 vs ~72 and 25%.)
 
 **What it buys, beyond the addresses.** The dual-address TWI requirement disappears. That
 requirement was the reason the node MCU list was short, and the reason megaTinyCore's
@@ -546,8 +548,9 @@ and polls it directly. The aux path (DEC-008) is unchanged and remains the refer
 
 **Why.**
 
-- *IMUs without an aux master.* LSM6DS*, BMI160/270 and ICM-42688 cannot host a mag
-  behind themselves. Over SPI any SoftFusion IMU gets one.
+- *IMUs whose aux master the firmware does not drive.* BMI160/270 and the LSM6DS family
+  have one in hardware, but only the ICM-456xx driver implements it. Over SPI any
+  SoftFusion IMU gets a mag without new driver work.
 - *Better parts.* The MMC5983MA has on-chip set/reset to cancel offset drift. On I2C it
   sits at a fixed `0x30`; over SPI it needs no address at all. (We read its 16-bit
   output; the 18-bit mode is not used.)
@@ -561,11 +564,21 @@ and polls it directly. The aux path (DEC-008) is unchanged and remains the refer
   zero offset, resolution and burst flag (the LIS3MDL auto-increments with `0x40` on SPI
   but `0x80` on I2C). Detection over SPI only probes SPI-capable parts.
 - The host polls at the IMU driver's `MagTs` for both transports. VQF assumes a fixed mag
-  period, so the poller does not catch up after a stall; it takes one sample and resyncs.
-- The mag runs at **mode 3, MSB first, ≤ 10 MHz**, set by the generator regardless of the
-  IMU's bus (whose legacy default is 24 MHz). Same pins, separate `SPISettings`.
-- After a poll the sensor calls its own interface's `swapIn()`. A mag on a node channel
-  arms that node, and for an I2C IMU that can leave `Wire` on the chain's pins.
+  period, so the poller catches up at most a few missed periods (one per loop) and after a
+  stall longer than four periods takes one sample and resyncs. A failed read delivers no
+  sample, and the aux master's busy-wait times out after 5 ms instead of hanging the loop.
+- The mag runs **MSB first, ≤ 10 MHz and never faster than its bus**, set by the generator
+  (the IMU bus's legacy default is 24 MHz). Its SPI mode follows the bus unless the board
+  config sets one. Same pins, separate `SPISettings`.
+- After a poll that touched the bus, the sensor calls its own interface's `swapIn()`. A
+  mag on a node channel arms that node, and for an I2C IMU that can leave `Wire` on the
+  chain's pins.
+- The toggle now takes effect at run time. `Sensor::setFlag` saves the new state first and
+  notifies listeners afterwards: the BNO08x listener re-reads its toggles from the
+  configuration, so notifying from inside `setToggle()` (as upstream PR #465 does) would
+  reapply the old value. Switching the mag off also returns the fusion to 6D.
+- **Not done:** no per-mag axis remap, and no hard- or soft-iron calibration. The mag must
+  be laid out with its axes parallel to the IMU's (I2SPI §4.5).
 
 **Diverges from upstream PR #465** (open, WIP), which has the mag pipeline only for the
 ICM-45 aux master. Our `scaleMagSample`, `isMagAttached` and the

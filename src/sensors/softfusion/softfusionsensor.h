@@ -207,14 +207,19 @@ public:
 	void motionLoop() final {
 		// Magnetometer first, at the fusion's fixed mag period. Polling one behind an
 		// I2SPI node can move the I2C peripheral to the chain's pins (the arm write),
-		// so put this sensor's own bus back before anything touches the IMU.
+		// so after a read put this sensor's own bus back before anything touches the
+		// IMU.
 		if (magDriver.isMagAttached()) {
-			magDriver.poll(micros(), SensorType::MagTs, [&](const float scaled[3]) {
-				// sensor_real_t is double under SENSORS_DOUBLE_PRECISION.
-				const sensor_real_t mag[3] = {scaled[0], scaled[1], scaled[2]};
-				m_fusion.updateMag(mag);
-			});
-			if (m_magInterface && m_hwInterface) {
+			const bool touchedBus = magDriver.poll(
+				micros(),
+				SensorType::MagTs,
+				[&](const float scaled[3]) {
+					// sensor_real_t is double under SENSORS_DOUBLE_PRECISION.
+					const sensor_real_t mag[3] = {scaled[0], scaled[1], scaled[2]};
+					m_fusion.updateMag(mag);
+				}
+			);
+			if (touchedBus && m_magInterface && m_hwInterface) {
 				m_hwInterface->swapIn();
 			}
 		}
@@ -363,15 +368,19 @@ public:
 							},
 						.readBytes =
 							[mag](uint8_t reg, uint8_t* buffer, size_t length) {
+								// An SPI read has no failure the host can see.
 								mag->readBytes(
 									reg,
 									static_cast<uint8_t>(length),
 									buffer
 								);
+								return true;
 							},
 						.setDeviceId = [](uint8_t) {},
 					},
-					Consts::Supports9ByteMag
+					// The host reads any width over SPI; the 9-byte limit is the
+					// IMU aux master's.
+					true
 				)) {
 				m_Logger.warn(
 					"No supported magnetometer answered on %s",
@@ -389,8 +398,9 @@ public:
 					= [&](uint8_t address) { return m_sensor.readAux(address); },
 					.writeByte = [&](uint8_t address, uint8_t value
 								 ) { m_sensor.writeAux(address, value); },
-					.readBytes = [&](uint8_t address, uint8_t* buffer, size_t length
-								 ) { m_sensor.readAux(address, buffer, length); },
+					.readBytes
+					= [&](uint8_t address, uint8_t* buffer, size_t length
+					  ) { return m_sensor.readAux(address, buffer, length); },
 					.setDeviceId
 					= [&](uint8_t deviceId) { m_sensor.setAuxId(deviceId); },
 				},
@@ -403,6 +413,10 @@ public:
 		toggles.onToggleChange([&](SensorToggles toggle, bool value) {
 			if (toggle == SensorToggles::MagEnabled) {
 				magDriver.setPollingEnabled(value);
+				if (!value) {
+					// Back to 6D now, not on the next reboot.
+					m_fusion.disableMag();
+				}
 			}
 		});
 	}

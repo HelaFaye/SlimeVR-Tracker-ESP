@@ -50,6 +50,9 @@ public:
 	[[nodiscard]] bool getToggle(SensorToggles toggle) const;
 
 	void onToggleChange(std::function<void(SensorToggles, bool)>&& callback);
+	/// Tell the onToggleChange() listener. Separate from setToggle() so the caller can
+	/// persist the new state first: listeners may re-read it from the configuration.
+	void emitToggleChange(SensorToggles toggle, bool state) const;
 
 	static const char* toggleToString(SensorToggles toggle);
 
@@ -57,8 +60,6 @@ public:
 
 private:
 	std::optional<std::function<void(SensorToggles, bool)>> callback;
-
-	void emitToggleChange(SensorToggles toggle, bool state) const;
 
 	SensorToggleValues values;
 };

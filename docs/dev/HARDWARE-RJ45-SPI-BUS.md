@@ -131,11 +131,12 @@ Cable capacitance is the other half of the problem: I2C's 400 pF budget is real,
 cable runs roughly 50–70 pF/m per conductor. Beyond about 2 m total chain length, drop to
 100 kHz I2C or add an active terminator.
 
-**Current budget.** 26 AWG is 0.1339 Ω/m, and the current traverses **two** conductors —
-out on VBUS and back on GND — so budget 0.27 Ω/m round trip. Six nodes at ~4 mA each
-(0.42 mA IMU + ~0.5 mA mag + ~3 mA ATtiny) is 24 mA, giving ~6.4 mV/m. Negligible. It stops
-being negligible if nodes get LEDs or the chain gets long; regulate locally at the node if
-you add anything hungry.
+**Current budget.** The current traverses **two** conductors — out on VBUS and back on
+GND. Flat patch cable is commonly 32 AWG, ~1.08 Ω/m round trip (26 AWG round cable:
+~0.27 Ω/m). Six nodes at ~5.4 mA each (0.42 mA IMU + 2.0 mA QMC6309 at the firmware's
+ODR/OSR + ~3 mA ATtiny) is 32.5 mA, giving ~35 mV/m on 32 AWG. Fine for a body chain; it
+stops being fine if nodes get LEDs or the chain gets long. Regulate locally at the node
+if you add anything hungry. Limits in I2SPI.md §14.2.
 
 **Hot-plug.** Not supported. Powering a node while the bus is live can latch up the IMU
 through its I/O pins. Power the hub down to re-cable.
