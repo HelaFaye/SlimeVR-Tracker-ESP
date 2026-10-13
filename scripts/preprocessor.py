@@ -8,13 +8,28 @@ Import("env")
 
 try:
     import jsonschema
-except:
-    env.Execute(
-        env.VerboseAction(
-            '$PYTHONEXE -m pip install "jsonschema==4.22.0"',
-            "Installing jsonschema for validation",
+except ImportError:
+    # Install into a project-local directory with the interpreter running this script,
+    # then import from there. $PYTHONEXE is not enough: pioarduino runs build scripts
+    # with its own virtualenv's paths (~/.platformio/penv), so a package installed into
+    # PlatformIO's Python stays invisible here. --target works whichever interpreter or
+    # sys.path is in use, and the running interpreter picks wheels that match it.
+    import importlib
+    import sys
+
+    _deps = os.path.join(env.subst("$PROJECT_DIR"), ".pio", "pydeps")
+    sys.path.insert(0, _deps)
+    try:
+        import jsonschema  # installed there by an earlier board's build
+    except ImportError:
+        env.Execute(
+            env.VerboseAction(
+                f'"{sys.executable}" -m pip install --quiet --upgrade --target "{_deps}" '
+                '"jsonschema==4.22.0"',
+                "Installing jsonschema for validation",
+            )
         )
-    )
+        importlib.invalidate_caches()
 
 from jsonschema import Draft202012Validator, exceptions as jsonschema_exceptions
 

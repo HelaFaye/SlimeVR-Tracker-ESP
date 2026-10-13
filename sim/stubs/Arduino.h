@@ -7,6 +7,9 @@
 
 #define LOW 0
 #define HIGH 1
+// Flash placement attribute on AVR/ESP; meaningless on a host.
+#define PROGMEM
+
 #define INPUT 0
 #define OUTPUT 1
 
