@@ -82,6 +82,9 @@ def format_value(val: Any, typ: str, key: str = "<unknown>") -> str:
 # "SPI" config block (notably BOARD_SLIMEVR_V1_2) generate exactly what they did before.
 LEGACY_SPI_BUS = "DIRECT_SPI(24'000'000, MSBFIRST, SPI_MODE3)"
 
+# Fastest SPI clock any supported SPI magnetometer accepts (MMC5983MA and LIS3MDL: 10 MHz).
+MAG_SPI_MAX_CLOCK = 10000000
+
 
 # The chain address is defined once, in ATTinyCSProtocol.h, which the node firmware also
 # builds against. Read it from there: separate copies here, in globals.h and in the node
@@ -231,6 +234,36 @@ def _format_spi_bus(spi: Optional[dict]) -> str:
     )
 
 
+def _format_mag(mag: dict, spi_buses: dict, chains: dict) -> str:
+    """A magnetometer on its own SPI chip select, as the descriptor's last argument."""
+    bus_name = mag.get('bus', 'default')
+    if bus_name not in spi_buses:
+        raise ValueError(f"magnetometer names SPI bus {bus_name!r}, which SPI does not define")
+    # Same pins as the IMU's bus, but the mag's own settings: the supported parts
+    # (MMC5983MA, LIS3MDL) are mode 3, MSB first, 10 MHz at most, while an IMU bus may
+    # run faster (the legacy default is 24 MHz). SPISettings are applied per transaction,
+    # so both share one SPIClass safely.
+    bus = dict(spi_buses.get(bus_name) or {})
+    limit = int(mag.get('clock', MAG_SPI_MAX_CLOCK))
+    if limit > MAG_SPI_MAX_CLOCK:
+        raise ValueError(f"magnetometer clock {limit} exceeds {MAG_SPI_MAX_CLOCK} Hz")
+    bus['clock'] = min(int(bus.get('clock', limit)), limit)
+    bus['mode'] = 'SPI_MODE3'
+    bus['bitOrder'] = 'MSBFIRST'
+    return (
+        f"SPI_MAG({_format_spi_bus(bus)}, "
+        f"{_format_chip_select(mag.get('cs'), chains)})"
+    )
+
+
+def _desc_entry(params: List[str], sensor: dict, spi_buses: dict, chains: dict) -> str:
+    """SENSOR_DESC_ENTRY(...), with SPI_MAG(...) appended when the sensor has a "mag".
+    params must already hold all seven positional arguments, extraParam included."""
+    if sensor.get('mag'):
+        params = [*params, _format_mag(sensor['mag'], spi_buses, chains)]
+    return f"SENSOR_DESC_ENTRY({','.join(params)})"
+
+
 def _build_board_flags(defaults: dict, board_name: str) -> List[str]:
     """Construct list of -D flags for one board."""
     if "defaults" not in defaults:
@@ -301,7 +334,7 @@ def _build_board_flags(defaults: dict, board_name: str) -> List[str]:
                     f"DIRECT_PIN({format_value(sensor.get('int', 255), 'pin')})",
                     '0'
                 ]
-                sensor_list.append(f"SENSOR_DESC_ENTRY({','.join(params)})")
+                sensor_list.append(_desc_entry(params, sensor, spi_buses, chains))
                 continue
 
             if sensor.get('protocol') == 'I2C':
@@ -314,7 +347,7 @@ def _build_board_flags(defaults: dict, board_name: str) -> List[str]:
                     f"DIRECT_PIN({format_value(sensor.get('int', 255), 'pin')})",
                     '0'
                 ]
-                sensor_list.append(f"SENSOR_DESC_ENTRY({','.join(params)})")
+                sensor_list.append(_desc_entry(params, sensor, spi_buses, chains))
                 add('PIN_IMU_SDA', sensor.get('sda'), 'pin')
                 add('PIN_IMU_SCL', sensor.get('scl'), 'pin')
 
@@ -328,7 +361,7 @@ def _build_board_flags(defaults: dict, board_name: str) -> List[str]:
                     f"DIRECT_PIN({format_value(sensor.get('int', 255), 'pin')})",
                     '0'
                 ]
-                sensor_list.append(f"SENSOR_DESC_ENTRY({','.join(params)})")
+                sensor_list.append(_desc_entry(params, sensor, spi_buses, chains))
 
             # serialcommands.cpp prints PIN_IMU_INT unconditionally, and add() skips
             # None, so a sensor without an `int` produced a config that fails to build.

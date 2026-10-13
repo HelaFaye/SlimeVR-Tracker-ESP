@@ -10,10 +10,15 @@
 #define INPUT 0
 #define OUTPUT 1
 
-namespace sim { void gpioWrite(int pin, int level); int gpioRead(int pin); }
+namespace sim {
+void gpioWrite(int pin, int level);
+int gpioRead(int pin);
+}  // namespace sim
 
 inline void pinMode(int, int) {}
 inline void digitalWrite(int pin, int level) { sim::gpioWrite(pin, level); }
 inline int digitalRead(int pin) { return sim::gpioRead(pin); }
 void delayMicroseconds(unsigned us);
 void delay(unsigned ms);
+// Declared for sources that read the clock; each test binary that needs it defines it.
+uint32_t micros();

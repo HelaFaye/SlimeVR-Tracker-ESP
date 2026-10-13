@@ -57,6 +57,7 @@
 			"properties": {
 				"protocol": { "const": "I2C" },
 				"imu": { "$ref": "#/$defs/IMU_TYPE" },
+				"mag": { "$ref": "#/$defs/SPI_MAG" },
 				"sda": { "$ref": "#/$defs/pin", "description": "SDA Pin" },
 				"scl": { "$ref": "#/$defs/pin", "description": "SCL Pin" },
 				"int": { "$ref": "#/$defs/pin", "description": "INT Pin" },
@@ -78,6 +79,7 @@
 			"properties": {
 				"protocol": { "const": "I2C" },
 				"imu": { "$ref": "#/$defs/IMU_TYPE" },
+				"mag": { "$ref": "#/$defs/SPI_MAG" },
 				"node": { "type": "integer", "minimum": 1, "maximum": 15, "description": "Node id, must match the -DNODE_ID the node was flashed with" },
 				"channel": { "type": "integer", "minimum": 0, "maximum": 15, "description": "Gated channel on that node, defaults to 0; must be in the node's I2C_CHANNELS" },
 				"chain": { "type": "string", "description": "Named chain from REMOTE_CS. Omit when there is only one" },
@@ -88,12 +90,31 @@
 			"required": ["protocol", "imu", "node"],
 			"not": { "anyOf": [{ "required": ["sda"] }, { "required": ["scl"] }] }
 		},
+		"SPI_MAG": {
+			"type": "object",
+			"description": "Magnetometer on its own SPI chip select, fused with this IMU. Supported over SPI: MMC5983MA, LIS3MDL (SoftFusion IMUs only)",
+			"properties": {
+				"cs": {
+					"description": "Chip select: a host pin, or a channel on an I2SPI node",
+					"oneOf": [
+						{ "$ref": "#/$defs/pin" },
+						{ "$ref": "#/$defs/DIRECT_CS" },
+						{ "$ref": "#/$defs/ATTINY_CS" }
+					]
+				},
+				"bus": { "type": "string", "description": "Named SPI bus. Omit when there is only one" },
+				"clock": { "type": "integer", "minimum": 100000, "maximum": 10000000, "description": "SPI clock for the magnetometer in Hz. Default and maximum 10 MHz, and never faster than the bus's own clock. Mode 3, MSB first, regardless of the bus" }
+			},
+			"required": ["cs"],
+			"additionalProperties": false
+		},
 		"SPI_IMU": {
 			"type": "object",
 			"description": "SPI Imu",
 			"properties": {
 				"protocol": { "const": "SPI" },
 				"imu": { "$ref": "#/$defs/IMU_TYPE" },
+				"mag": { "$ref": "#/$defs/SPI_MAG" },
 				"int": { "$ref": "#/$defs/pin", "description": "INT Pin" },
 				"rotation": {
 					"$ref": "#/$defs/IMU_ROTATION",

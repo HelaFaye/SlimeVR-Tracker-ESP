@@ -50,6 +50,7 @@ HELPERS = {
     ),
     "I2SPI_WIRE_CH": ("ATTinyCSWireInterface*", "uint8_t, uint8_t"),
     "I2SPI_WIRE": ("ATTinyCSWireInterface*", "uint8_t"),
+    "SPI_MAG": ("RegisterInterface*", "DirectSPIInterface*, PinInterface*"),
 }
 
 failures = []
@@ -91,6 +92,7 @@ def translation_unit():
         "struct SensorInterface {};",
         "struct DirectSPIInterface : SensorInterface {};",
         "struct ATTinyCSWireInterface : SensorInterface {};",
+        "struct RegisterInterface {};",
         "struct EmptySensorInterface : SensorInterface { static EmptySensorInterface instance; };",
     ]
     lines += [f"struct {t} {{}};" for t in imu_types()]
@@ -116,7 +118,8 @@ def translation_unit():
         "template <typename SensorType, typename AccessInterface>",
         "bool sensorDescEntry(uint8_t sensorID, AccessInterface accessInterface, float rotation,",
         "    SensorInterface* sensorInterface, bool optional = false,",
-        "    PinInterface* intPin = nullptr, int extraParam = 0) { return true; }",
+        "    PinInterface* intPin = nullptr, int extraParam = 0,",
+        "    RegisterInterface* magInterface = nullptr) { return true; }",
         "#define SENSOR_DESC_ENTRY(ImuType, ...) \\",
         "    count += sensorDescEntry<ImuType>(sensorID++, __VA_ARGS__) ? 1 : 0;",
         "int main() {",
@@ -179,11 +182,12 @@ def main():
                 {"protocol": "SPI", "imu": "IMU_ICM45686", "rotation": "DEG_0",
                  "cs": {"type": "direct", "pin": "0"}},
                 {"protocol": "SPI", "imu": "IMU_ICM45686", "rotation": "DEG_90",
-                 "cs": {"type": "attiny", "node": 1}},
+                 "cs": {"type": "attiny", "node": 1},
+                 "mag": {"cs": {"type": "attiny", "node": 1, "channel": 1}}},
                 {"protocol": "SPI", "imu": "IMU_ICM45686", "rotation": "DEG_0",
                  "cs": {"type": "attiny", "node": 2, "channel": 1}},
                 {"protocol": "I2C", "imu": "IMU_ICM45686", "rotation": "DEG_180",
-                 "node": 3, "address": 0x68},
+                 "node": 3, "address": 0x68, "mag": {"cs": "7"}},
                 {"protocol": "I2C", "imu": "IMU_ICM45686", "rotation": "DEG_270",
                  "node": 4, "channel": 1},
             ],

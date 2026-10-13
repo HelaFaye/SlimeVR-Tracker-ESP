@@ -15,6 +15,11 @@ void SensorToggleState::setToggle(SensorToggles toggle, bool state) {
 			values.tempGradientCalibrationEnabled = state;
 			break;
 	}
+
+	// Without this, listeners registered with onToggleChange() never hear about a
+	// change, so toggling the magnetometer at runtime did nothing until a reboot.
+	// Same fix as upstream PR #465.
+	emitToggleChange(toggle, state);
 }
 
 bool SensorToggleState::getToggle(SensorToggles toggle) const {

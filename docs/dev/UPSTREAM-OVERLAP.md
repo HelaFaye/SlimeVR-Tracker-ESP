@@ -60,6 +60,23 @@ cache, which is our DEC-005 by another route) and accept SCK/MISO/MOSI. Differen
 regression. **Action:** report as "please land #465"; drop our local fix when rebasing onto
 it. Recorded in `UPSTREAM-FINDINGS.md` §1.
 
+**Since 2026-10-13 we also overlap #465's mag pipeline** (DEC-017). We needed SPI
+magnetometers, and `main` cannot deliver a mag sample to the fusion at all, so we wrote
+our own host-polled path rather than wait on a WIP PR. Overlapping pieces:
+
+| #465 | This fork |
+|---|---|
+| `processMagSample`, mag read through the IMU aux master | `MagDriver::poll()`, host-polled at `MagTs`, any SoftFusion IMU |
+| `scaleMagSample`, per-part `resolution` | Same names and intent; adds byte order, zero offset, per-transport burst flag |
+| `isMagAttached` | Same |
+| `readAux` burst | Same shape (`readAux(addr, buf, len)`) |
+| `SensorToggles` `emitToggleChange` fix | Same fix |
+| — | SPI transport, MMC5983MA, LIS3MDL, `"mag"` in board config |
+
+**Action:** when #465 lands, rebase onto it, keep its names, and re-add the SPI transport
+and the two parts on top. Offer the SPI transport upstream as a follow-up to #465, not as
+a competing PR.
+
 ### 3. Wi-Fi transport abstraction: upstream PR #534 (open)
 
 **"Move Wi-Fi code to strategy pattern"**, gorbit99, July 2026. Adds

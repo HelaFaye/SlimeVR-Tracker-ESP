@@ -171,6 +171,24 @@ for name in c5_boards:
             ok(int(pin) not in C5_RESERVED,
                f"{name}: SPI '{bus_name}' {role} on GPIO{pin} is usable on the module")
 
+print("\nSPI magnetometers")
+fast_bus = {"default": {"sck": "10", "miso": "9", "mosi": "8", "clock": 24000000,
+                        "mode": "SPI_MODE0"}}
+mag = pp._format_mag({"cs": {"type": "attiny", "node": 1, "channel": 1}}, fast_bus,
+                     {"default": {}})
+ok(mag == "SPI_MAG(SPI_BUS(10000000, MSBFIRST, SPI_MODE3, 10, 9, 8), ATTINY_CS_CH(1, 1))",
+   "mag on a 24 MHz mode-0 bus: same pins, capped at 10 MHz, mode 3")
+slow_bus = {"default": {"sck": "10", "miso": "9", "mosi": "8", "clock": 2000000}}
+ok("SPI_BUS(2000000," in pp._format_mag({"cs": "7"}, slow_bus, {}),
+   "mag never runs faster than its bus")
+ok("DIRECT_SPI(10000000, MSBFIRST, SPI_MODE3)" in pp._format_mag({"cs": "7"},
+                                                                 {"default": None}, {}),
+   "mag on a board without an SPI block uses the default pins at 10 MHz")
+ok(raises(lambda: pp._format_mag({"cs": "7", "clock": 20000000}, {"default": None}, {})),
+   "mag clock above 10 MHz is refused")
+ok(raises(lambda: pp._format_mag({"cs": "7", "bus": "nope"}, {"default": None}, {})),
+   "mag on an undefined SPI bus is refused")
+
 print(f"\n{checks} checks, {len(failures)} failed")
 for f in failures:
     print(f"  - {f}")

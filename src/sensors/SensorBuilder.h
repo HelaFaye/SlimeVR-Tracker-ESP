@@ -110,6 +110,9 @@ private:
 		bool optional;
 		PinInterface* intPin;
 		int extraParam;
+		/// A magnetometer on its own chip select, or nullptr. Only sensor types whose
+		/// constructor accepts one use it (SoftFusion); see buildSensor().
+		RegisterInterface* magInterface = nullptr;
 	};
 
 public:
@@ -235,7 +238,8 @@ public:
 		SensorInterface* sensorInterface,
 		bool optional = false,
 		PinInterface* intPin = nullptr,
-		int extraParam = 0
+		int extraParam = 0,
+		RegisterInterface* magInterface = nullptr
 	) {
 		std::unique_ptr<::Sensor> sensor;
 		if constexpr (std::is_same<SensorType, SensorAuto>::value) {
@@ -267,6 +271,7 @@ public:
 					optional,
 					intPin,
 					extraParam,
+					magInterface,
 				}
 			);
 		} else {
@@ -284,6 +289,7 @@ public:
 				optional,
 				intPin,
 				extraParam,
+				magInterface,
 			});
 		}
 
@@ -347,14 +353,42 @@ public:
 			sensorDef.imuInterface.toString().c_str()
 		);
 
-		sensor = std::make_unique<ImuType>(
-			sensorDef.sensorID,
-			sensorDef.imuInterface,
-			sensorDef.rotation,
-			sensorDef.sensorInterface,
-			sensorDef.intPin,
-			sensorDef.extraParam
-		);
+		if constexpr (std::is_constructible_v<
+						  ImuType,
+						  uint8_t,
+						  RegisterInterface&,
+						  float,
+						  SensorInterface*,
+						  PinInterface*,
+						  int,
+						  RegisterInterface*>) {
+			sensor = std::make_unique<ImuType>(
+				sensorDef.sensorID,
+				sensorDef.imuInterface,
+				sensorDef.rotation,
+				sensorDef.sensorInterface,
+				sensorDef.intPin,
+				sensorDef.extraParam,
+				sensorDef.magInterface
+			);
+		} else {
+			if (sensorDef.magInterface != nullptr) {
+				m_Manager->m_Logger.warn(
+					"Sensor %d: this IMU type cannot use an external magnetometer; "
+					"ignoring the one configured on %s",
+					sensorDef.sensorID + 1,
+					sensorDef.magInterface->toString().c_str()
+				);
+			}
+			sensor = std::make_unique<ImuType>(
+				sensorDef.sensorID,
+				sensorDef.imuInterface,
+				sensorDef.rotation,
+				sensorDef.sensorInterface,
+				sensorDef.intPin,
+				sensorDef.extraParam
+			);
+		}
 
 		sensor->motionSetup();
 		return sensor;

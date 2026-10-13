@@ -251,15 +251,36 @@ Pin numbers are checked against KiCad's symbol, and the board's wiring against t
 firmware's ports, by `gen/check_node_pins.py` in the hardware repository.
 
 Also on the reference node: ICM-45686 IMU on the cable's SPI lines; QMC6309 magnetometer on
-the **IMU's AUX1 I2C master**, never the chain (§4.5); 100 nF at every supply pin, 10 µF
+the **IMU's AUX1 I2C master**, never the chain I2C (§4.5); 100 nF at every supply pin, 10 µF
 bulk on VBUS; two RJ45 jacks in parallel.
 
 ### 4.5 Magnetometers
 
-A magnetometer at a node **MUST** connect to that node's IMU auxiliary I2C master, not to the
-chain. The QMC6309 has a fixed address (`0x7c`, no strap), so several on the chain would
-collide. Behind its own IMU each sits on a private bus, and its samples arrive in the IMU
-FIFO at zero SPI and zero chain cost (DEC-008).
+A magnetometer **MUST NOT** sit on the chain's I2C. The QMC6309 has a fixed address (`0x7c`,
+no strap), and other parts have one or two, so several nodes' mags would collide. A node
+has two ways to carry one; the host fuses either with the IMU it is configured against.
+
+**A. Behind the IMU's auxiliary I2C master** (reference, DEC-008). The mag sits on a
+private two-wire bus behind its own IMU, so it costs no chain traffic and no extra
+channel. Only IMUs with an aux master qualify (ICM-456xx). Supported: QMC6309, IST8306,
+LIS3MDL.
+
+**B. On its own SPI channel** (DEC-017). The mag shares the cable's SCK, MOSI and MISO and
+takes a **second gated SPI channel** on the node, exactly like a second IMU would. Works
+with every SoftFusion IMU, aux master or not. The reference ATtiny412 node has one channel
+(§4.1), so this needs a 414-class node or an external-gate node with a second
+74LVC1G32. Supported: MMC5983MA, LIS3MDL.
+
+- The mag channel **MUST** be gated like any SPI channel (§4.2). The mag's MISO **MUST**
+  be tri-stated whenever its CS is high, which both supported parts do.
+- The host runs the mag at **SPI mode 3, MSB first, at most 10 MHz**, whatever the IMU's
+  bus settings; `SPISettings` are applied per transaction. A board config may lower the
+  clock (`"mag": {"cs": ..., "clock": ...}`) but not raise it.
+- Each mag read is one chain arm (when switching from the IMU) plus one 7-byte SPI
+  transfer, at the fusion's mag rate (100 Hz). The host re-selects the IMU afterwards.
+
+In both cases the host polls the mag at a fixed period, because VQF assumes one. Samples
+are not taken from the IMU FIFO.
 
 ### 4.6 What bypasses the node
 
@@ -665,7 +686,8 @@ compilation and static checks. Settle these at bring-up:
 |---|---|
 | Protocol constants (shared) | `src/sensorinterface/ATTinyCSProtocol.h` |
 | Host: chain bus, SPI chip select, I2C sensor interface | `src/sensorinterface/ATTinyCSInterface.{h,cpp}` |
-| Host: descriptor helpers (`ATTINY_CS*`, `I2SPI_WIRE*`) | `src/sensors/SensorBuilder.cpp` |
+| Host: descriptor helpers (`ATTINY_CS*`, `I2SPI_WIRE*`, `SPI_MAG`) | `src/sensors/SensorBuilder.cpp` |
+| Host: magnetometer detection, setup, polling (aux and SPI) | `src/sensors/softfusion/magdriver.{h,cpp}`, test `sim/test_magdriver.sh` |
 | Host: defaults (`REMOTE_CS_*`) | `src/globals.h` |
 | Board config → build flags | `scripts/preprocessor.py`, `board-defaults.json` (`REMOTE_CS`, `cs: {type: attiny}`, I2C `node`), `board-defaults.schema.json` |
 | Node firmware (ATtiny412 / external-gate variants) | `extras/attiny-cs-node/` |
@@ -689,9 +711,15 @@ compilation and static checks. Settle these at bring-up:
   { "protocol": "SPI", "imu": "IMU_ICM45686", "rotation": "DEG_0",
     "cs": { "type": "attiny", "node": 2, "channel": 1 } },
   { "protocol": "I2C", "imu": "IMU_ICM45686", "rotation": "DEG_0",
-    "node": 3, "address": 104 }
+    "node": 3, "address": 104 },
+  { "protocol": "SPI", "imu": "IMU_ICM45686", "rotation": "DEG_0",
+    "cs":  { "type": "attiny", "node": 4 },
+    "mag": { "cs": { "type": "attiny", "node": 4, "channel": 1 } } }
 ]
 ```
+
+`"mag"` adds an SPI magnetometer on its own chip select (§4.5 B), fused with that sensor.
+Its `cs` takes the same forms as a sensor's, a host pin included.
 
 Omit `strobe` for software-CS bring-up. Omit `baseAddress` to use the default. For several
 chains, make `REMOTE_CS` a map of named chains and add `"chain": "<name>"` to each sensor

@@ -43,6 +43,12 @@ else
   skip "Chain simulation" "no $CXX (Arch: base-devel, Debian: g++)"
 fi
 
+if have "$CXX"; then
+  run "Magnetometer driver (SPI and aux, against modelled parts)" sim/test_magdriver.sh
+else
+  skip "Magnetometer driver" "no $CXX"
+fi
+
 run "Numeric verification (docs vs recomputed values)" python3 sim/check_numbers.py
 
 if have "$AVR_GCC"; then
