@@ -87,9 +87,12 @@ FIFO_BURST_BYTES = 20          # one packet plus register address
 
 
 def i2c_write_us(payload_bytes, hz):
-    """Start + (n bytes x 9 bits with ACK) + stop. The bit either side of the frame is
-    the usual approximation for START and STOP."""
-    bits = 1 + payload_bytes * 9 + 1
+    """Start + address byte + payload bytes (9 bits each with ACK) + stop. The bit either
+    side of the frame is the usual approximation for START and STOP.
+
+    The address byte was left out until 2026-10-13, which understated every ARM figure
+    by a quarter (72.5 us instead of 95 us at 400 kHz)."""
+    bits = 1 + (1 + payload_bytes) * 9 + 1
     return bits / hz * 1e6
 
 
@@ -140,11 +143,11 @@ check("max addressable sensors", max_node * max_chan, 240, 0, "")
 print(f"\nBus timing (v3 frame is {frame_len} bytes: opcode, target, value,\n        plus the address byte)")
 arm_400 = i2c_write_us(frame_len, I2C_FAST_HZ)
 arm_1m = i2c_write_us(frame_len, I2C_FASTPLUS_HZ)
-check("ARM write at 400 kHz", arm_400, 70, 0.10, " us")
-check("ARM write at 1 MHz", arm_1m, 30, 0.15, " us")
+check("ARM write at 400 kHz", arm_400, 95, 0.02, " us")
+check("ARM write at 1 MHz", arm_1m, 38, 0.02, " us")
 
 softcs_400 = i2c_write_us(frame_len, I2C_FAST_HZ) * 2
-check("software CS assert+deassert at 400 kHz", softcs_400, 145, 0.05, " us")
+check("software CS assert+deassert at 400 kHz", softcs_400, 190, 0.02, " us")
 
 fifo_us = spi_transfer_us(FIFO_BURST_BYTES, SPI_HZ)
 check("one FIFO burst at 4 MHz", fifo_us, 40, 0.05, " us")
@@ -152,21 +155,26 @@ check("one FIFO burst at 4 MHz", fifo_us, 40, 0.05, " us")
 print("\nPoll cycle, 4 sensors at 200 Hz (5 ms period)")
 cycle_us = 5000
 i2c_4 = 4 * arm_400
-check("I2C per cycle", i2c_4, 280, 0.10, " us")
-check("as a fraction of the cycle", i2c_4 / cycle_us * 100, 5.6, 0.10, " %")
+check("I2C per cycle", i2c_4, 380, 0.02, " us")
+check("as a fraction of the cycle", i2c_4 / cycle_us * 100, 7.6, 0.02, " %")
 
 print("\nPoll cycle, 16 sensors at 200 Hz")
 i2c_16_400 = 16 * arm_400
 i2c_16_1m = 16 * arm_1m
 spi_16 = 16 * fifo_us
-check("I2C at 400 kHz", i2c_16_400 / 1000, 1.2, 0.10, " ms")
-check("I2C at 1 MHz", i2c_16_1m / 1000, 0.48, 0.15, " ms")
+check("I2C at 400 kHz", i2c_16_400 / 1000, 1.52, 0.02, " ms")
+check("I2C at 1 MHz", i2c_16_1m / 1000, 0.61, 0.02, " ms")
 check("SPI at 4 MHz", spi_16 / 1000, 0.64, 0.05, " ms")
-check("total at 400 kHz", (i2c_16_400 + spi_16) / 1000, 1.85, 0.10, " ms")
+check("total at 400 kHz", (i2c_16_400 + spi_16) / 1000, 2.16, 0.02, " ms")
+check("total at 1 MHz", (i2c_16_1m + spi_16) / 1000, 1.25, 0.02, " ms")
 check("fraction of a 200 Hz cycle at 400 kHz",
-      (i2c_16_400 + spi_16) / cycle_us * 100, 37, 0.10, " %")
+      (i2c_16_400 + spi_16) / cycle_us * 100, 43, 0.02, " %")
+check("fraction of a 200 Hz cycle at 1 MHz",
+      (i2c_16_1m + spi_16) / cycle_us * 100, 25, 0.02, " %")
+check("fraction of a 100 Hz cycle at 400 kHz",
+      (i2c_16_400 + spi_16) / 10000 * 100, 22, 0.02, " %")
 check("fraction of a 100 Hz cycle at 1 MHz",
-      (i2c_16_1m + spi_16) / 10000 * 100, 11, 0.15, " %")
+      (i2c_16_1m + spi_16) / 10000 * 100, 12.5, 0.02, " %")
 
 # ---------------------------------------------------------------- electrical
 
@@ -193,6 +201,72 @@ else:
     failures.append("cable capacitance exceeds the I2C budget")
 
 check("six 4k7 pull-ups in parallel", 4700 / 6, 783, 0.02, " ohm")
+
+# ------------------------------------------------------- limits (I2SPI.md §14)
+#
+# Declared here, not derivable. ESTIMATES are marked; measure them at bring-up.
+
+VDD = 3.3
+I2C_FAST_RISE_NS = 300         # I2C spec, Fast mode, max rise time 30%->70%
+I2C_FAST_SINK_MA = 3           # I2C spec, Fast mode, VOL 0.4 V at 3 mA
+I2C_VOL = 0.4
+PULLUP_DEFAULT_OHM = 2200      # I2SPI.md §3.1 host default
+NODE_PF = 15                   # per node per I2C line: MCU pin, two jacks, traces - ESTIMATE
+SUPPLY_DROP_BUDGET_MV = 100    # what we allow VBUS to sag end to end - a choice
+CAMERA_NODE_MA = 80            # small SPI camera module, active - ESTIMATE, varies 2-3x
+QVGA_GREY_BYTES = 320 * 240
+LONG_CHAIN_M = 2.0
+
+print("\nLimits (I2SPI.md §14)")
+whitelist = (ROOT / PROTO).read_text()
+whitelist = re.search(r"AddressWhitelist\[\] = \{([^}]*)\}", whitelist).group(1)
+chains_per_bus = len([a for a in whitelist.split(",") if a.strip()])
+check("chains sharing one I2C bus", chains_per_bus, 7, 0, "")
+check("targets on one I2C bus", chains_per_bus * max_node * max_chan, 1680, 0, "")
+check("enumeration, full chain", max_node * settle_ms, 225, 0, " ms")
+
+per_400 = arm_400 + fifo_us
+per_1m = arm_1m + fifo_us
+check("per-sensor cost at 400 kHz", per_400, 135, 0.02, " us")
+check("per-sensor cost at 1 MHz", per_1m, 78, 0.02, " us")
+check("sensors at 200 Hz, whole cycle, 400 kHz", int(cycle_us // per_400), 37, 0, "")
+check("sensors at 200 Hz, whole cycle, 1 MHz", int(cycle_us // per_1m), 64, 0, "")
+check("sensors at 200 Hz, half the cycle, 400 kHz", int(cycle_us / 2 // per_400), 18, 0, "")
+check("sensors at 200 Hz, half the cycle, 1 MHz", int(cycle_us / 2 // per_1m), 32, 0, "")
+
+# Rise time on an RC: 30% -> 70% takes 0.8473 RC.
+def c_max_pf(r_ohm, rise_ns=I2C_FAST_RISE_NS):
+    return rise_ns * 1e-9 / (0.8473 * r_ohm) * 1e12
+
+r_min = (VDD - I2C_VOL) / (I2C_FAST_SINK_MA / 1000)
+check("bus capacitance at 400 kHz with the 2.2k default", c_max_pf(PULLUP_DEFAULT_OHM),
+      160, 0.02, " pF")
+check("strongest Fast-mode pull-up (3 mA sink)", r_min, 970, 0.02, " ohm")
+check("bus capacitance at 400 kHz with that pull-up", c_max_pf(r_min), 365, 0.02, " pF")
+check("cable left for 2 nodes, 2.2k", (c_max_pf(PULLUP_DEFAULT_OHM) - 2 * NODE_PF)
+      / RIBBON_PF_PER_M, 2.2, 0.05, " m")
+check("cable left for 15 nodes, strongest pull-up", (c_max_pf(r_min) - 15 * NODE_PF)
+      / RIBBON_PF_PER_M, 2.35, 0.05, " m")
+checks += 1
+if 15 * NODE_PF > c_max_pf(PULLUP_DEFAULT_OHM):
+    print("  [ok] 15 nodes alone exceed what the 2.2k default can drive at 400 kHz")
+else:
+    failures.append("15-node pull-up claim no longer holds")
+
+full_ma = max_node * node_ma
+check("full chain of reference nodes", full_ma, 81, 0.02, " mA")
+check("its supply drop over 2 m", full_ma / 1000 * LONG_CHAIN_M * AWG26_OHM_PER_M * 2
+      * 1000, 43, 0.05, " mV")
+budget_ma = SUPPLY_DROP_BUDGET_MV / (LONG_CHAIN_M * AWG26_OHM_PER_M * 2)
+check("current within the drop budget over 2 m", budget_ma, 187, 0.02, " mA")
+check("camera nodes within that budget", int(budget_ma // CAMERA_NODE_MA), 2, 0, "")
+
+for mhz, fps in ((8, 13), (12, 19.5)):
+    check(f"QVGA greyscale frames/s, whole chain, {mhz} MHz SPI",
+          mhz * 1e6 / 8 / QVGA_GREY_BYTES, fps, 0.03, " fps")
+
+check("ARM with a 4-byte v4 frame, 400 kHz", i2c_write_us(frame_len + 1, I2C_FAST_HZ),
+      117.5, 0.02, " us")
 
 # --------------------------------------------------------------- power staging
 

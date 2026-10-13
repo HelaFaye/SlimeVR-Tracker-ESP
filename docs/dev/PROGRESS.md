@@ -4,6 +4,38 @@ Newest first. Each entry says what changed, what was verified, and what is still
 
 ---
 
+## 2026-10-13b — I2SPI limits documented; ARM timing corrected
+
+**`docs/I2SPI.md` §14 now states the theoretical limits**:
+
+- hard protocol limits: 15 nodes, 16 channels, 240 targets per chain, 7 chains and 1,680
+  targets per I2C bus;
+- what binds first: bus time, I2C rise time against bus capacitance, SPI on cable, the
+  supply budget, software;
+- how to scale under v3, and the options for a v4 with more nodes (recommended against);
+- cameras: raw video is out; result-reporting sensors, camera configuration over gated
+  I2C, and a proposed broadcast frame-sync trigger fit.
+
+Every figure is recomputed by `sim/check_numbers.py`, which gained 22 checks.
+
+**Correction: every `ARM` figure was ~25 % low.** `i2c_write_us()` left out the address
+byte, so a v3 arm write was given as 72.5 µs at 400 kHz; with the address it is 95 µs
+(38 µs at 1 MHz). Corrected throughout the spec, the glove note and the example build:
+
+- 16 sensors at 200 Hz take 43 % of the cycle at 400 kHz, not 36–37 %;
+- 25 % at 1 MHz.
+
+Older progress-log entries keep their original figures.
+
+**Findings from the limit arithmetic, not yet acted on:**
+
+- The 2.2 kΩ default pull-up can drive ~160 pF at 400 kHz. That is fine for the reference
+  chains, but a full 15-node chain needs ~1 kΩ.
+- At 200 Hz a host realistically serves 18 sensors at 400 kHz, or 32 at 1 MHz, across all
+  of its chains.
+
+---
+
 ## 2026-10-13 — Magnetometers over SPI
 
 **A sensor can now have an SPI magnetometer on its own chip select**, on a host pin or on

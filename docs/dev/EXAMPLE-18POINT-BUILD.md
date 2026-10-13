@@ -200,14 +200,14 @@ Per hub, one poll cycle over three sensors:
    But note: the previously armed node is still armed, and the shared strobe is idle
    high, so no remote CS is asserted. The local and remote sensors coexist on the bus
    because only one chip select is ever low.
-2. **Node 1.** `select(1, 0)` — one 3-byte I2C write to `0x13`, about 70 µs at 400 kHz.
+2. **Node 1.** `select(1, 0)` — one 3-byte I2C write to `0x13`, about 95 µs at 400 kHz including the address byte.
    Node 1 enables its gating; every other node forces CS high. Then each SPI transaction
    is framed by toggling GPIO 6.
 3. **Node 2.** Same, one more arm write.
 
 So a full cycle costs **two arm writes**, not two per register access. At a 200 Hz sample
-rate that is roughly 140 µs of I2C per 5 ms cycle — under 3% of the budget. Raising the
-chain I2C to Fast-mode Plus halves it again if you need the headroom.
+rate that is roughly 190 µs of I2C per 5 ms cycle — under 4% of the budget. Raising the
+chain I2C to Fast-mode Plus cuts it to ~76 µs if you need the headroom.
 
 The failure mode worth understanding: if an arm write is NAKed, `ATTinyCSBus` clears its
 cached target, logs, and **does not touch the strobe** — because some other node may still
