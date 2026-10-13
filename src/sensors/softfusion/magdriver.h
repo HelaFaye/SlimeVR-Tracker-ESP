@@ -121,6 +121,16 @@ public:
 	[[nodiscard]] const char* getAttachedMagName() const;
 	[[nodiscard]] bool isMagAttached() const;
 
+	/// Which magnetometer axis feeds each IMU axis. The fusion works in the IMU chip's
+	/// frame, so a mag mounted at another orientation must be mapped into it.
+	///
+	/// Per IMU axis i (X, Y, Z), three bits at 3*i: bits 0-1 the mag axis (0 X, 1 Y,
+	/// 2 Z), bit 2 negate. Board config writes it as "axes": "+Y-X+Z" (IMU X = +mag Y,
+	/// IMU Y = -mag X, IMU Z = +mag Z); scripts/preprocessor.py encodes it.
+	static constexpr uint16_t AxisMapIdentity = (0 << 0) | (1 << 3) | (2 << 6);
+	void setAxisMap(uint16_t map) { axisMap = map; }
+	static void applyAxisMap(uint16_t map, const float in[3], float out[3]);
+
 	/// Raw sample bytes -> microtesla, honouring byte order, width and zero offset.
 	/// Public and static so it can be tested without hardware.
 	static void
@@ -135,6 +145,7 @@ private:
 	MagInterface interface;
 	bool pollingEnabled = false;
 	uint32_t lastPollMicros = 0;
+	uint16_t axisMap = AxisMapIdentity;
 
 	static std::vector<MagDefinition> supportedMags;
 

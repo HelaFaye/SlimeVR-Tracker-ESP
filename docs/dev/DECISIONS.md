@@ -577,8 +577,10 @@ and polls it directly. The aux path (DEC-008) is unchanged and remains the refer
   notifies listeners afterwards: the BNO08x listener re-reads its toggles from the
   configuration, so notifying from inside `setToggle()` (as upstream PR #465 does) would
   reapply the old value. Switching the mag off also returns the fusion to 6D.
-- **Not done:** no per-mag axis remap, and no hard- or soft-iron calibration. The mag must
-  be laid out with its axes parallel to the IMU's (I2SPI §4.5).
+- **Axis mapping** (added 2026-10-13): `"axes": "+Y-X+Z"` maps the mag's axes into the
+  IMU chip's frame, for SPI and aux-port mags alike. `MagDriver` applies it after
+  scaling, and the generator encodes it (3 bits per IMU axis) and refuses mirror images.
+- **Not done:** no hard- or soft-iron calibration.
 
 **Diverges from upstream PR #465** (open, WIP), which has the mag pipeline only for the
 ICM-45 aux master. Our `scaleMagSample`, `isMagAttached` and the

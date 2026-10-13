@@ -206,6 +206,21 @@ ok(raises(lambda: pp._format_mag({"cs": "7", "clock": 20000000}, {"default": Non
 ok(raises(lambda: pp._format_mag({"cs": "7", "bus": "nope"}, {"default": None}, {})),
    "mag on an undefined SPI bus is refused")
 
+print("\nMagnetometer axes")
+ok(pp._mag_axes("+X+Y+Z") == pp.MAG_AXES_IDENTITY == 136, "+X+Y+Z encodes as the identity (136)")
+ok(pp._mag_axes("+Y-X+Z") == (1 | (4 | 0) << 3 | 2 << 6), "+Y-X+Z: IMU X = mag Y, IMU Y = -mag X")
+ok(raises(lambda: pp._mag_axes("+Y+X+Z")), "a mirror image (+Y+X+Z) is refused")
+ok(raises(lambda: pp._mag_axes("+X+X+Z")), "a repeated axis is refused")
+ok(raises(lambda: pp._mag_axes("XYZ")), "unsigned axes are refused")
+imu = ["IMU_ICM45686", "DIRECT_PIN(0)", "DEG_0", "NO_WIRE", "false", "NO_PIN", "0"]
+aux = pp._desc_entry(imu, {"mag": {"axes": "-X-Y+Z"}}, {"default": None}, {})
+ok(aux.endswith(",0,nullptr," + str(pp._mag_axes("-X-Y+Z")) + ")"),
+   "axes alone: no interface (aux-port mag), then the map")
+plain = pp._desc_entry(imu, {"mag": {"cs": "7"}}, {"default": None}, {})
+ok(plain.endswith("DIRECT_PIN(7)))"), "identity map is not emitted")
+ok(raises(lambda: pp._desc_entry(imu, {"mag": {"clock": 1000000}}, {"default": None}, {})),
+   "clock without a cs is refused")
+
 print(f"\n{checks} checks, {len(failures)} failed")
 for f in failures:
     print(f"  - {f}")

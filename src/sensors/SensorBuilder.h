@@ -113,6 +113,8 @@ private:
 		/// A magnetometer on its own chip select, or nullptr. Only sensor types whose
 		/// constructor accepts one use it (SoftFusion); see buildSensor().
 		RegisterInterface* magInterface = nullptr;
+		/// SoftFusion::MagDriver::setAxisMap() encoding; identity unless configured.
+		uint16_t magAxes = SoftFusion::MagDriver::AxisMapIdentity;
 	};
 
 public:
@@ -239,7 +241,8 @@ public:
 		bool optional = false,
 		PinInterface* intPin = nullptr,
 		int extraParam = 0,
-		RegisterInterface* magInterface = nullptr
+		RegisterInterface* magInterface = nullptr,
+		int magAxes = SoftFusion::MagDriver::AxisMapIdentity
 	) {
 		std::unique_ptr<::Sensor> sensor;
 		if constexpr (std::is_same<SensorType, SensorAuto>::value) {
@@ -272,6 +275,7 @@ public:
 					intPin,
 					extraParam,
 					magInterface,
+					static_cast<uint16_t>(magAxes),
 				}
 			);
 		} else {
@@ -290,6 +294,7 @@ public:
 				intPin,
 				extraParam,
 				magInterface,
+				static_cast<uint16_t>(magAxes),
 			});
 		}
 
@@ -361,7 +366,8 @@ public:
 						  SensorInterface*,
 						  PinInterface*,
 						  int,
-						  RegisterInterface*>) {
+						  RegisterInterface*,
+						  uint16_t>) {
 			sensor = std::make_unique<ImuType>(
 				sensorDef.sensorID,
 				sensorDef.imuInterface,
@@ -369,9 +375,16 @@ public:
 				sensorDef.sensorInterface,
 				sensorDef.intPin,
 				sensorDef.extraParam,
-				sensorDef.magInterface
+				sensorDef.magInterface,
+				sensorDef.magAxes
 			);
 		} else {
+			if (sensorDef.magAxes != SoftFusion::MagDriver::AxisMapIdentity) {
+				m_Manager->m_Logger.warn(
+					"Sensor %d: this IMU type ignores a magnetometer axis mapping",
+					sensorDef.sensorID + 1
+				);
+			}
 			if (sensorDef.magInterface != nullptr) {
 				m_Manager->m_Logger.warn(
 					"Sensor %d: this IMU type cannot use an external magnetometer; "

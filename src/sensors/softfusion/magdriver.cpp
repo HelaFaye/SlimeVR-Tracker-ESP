@@ -232,8 +232,21 @@ bool MagDriver::poll(
 
 	float scaled[3];
 	scaleMagSample(*detectedMag, raw, scaled);
-	onSample(scaled);
+	float mapped[3];
+	applyAxisMap(axisMap, scaled, mapped);
+	onSample(mapped);
 	return true;
+}
+
+void MagDriver::applyAxisMap(uint16_t map, const float in[3], float out[3]) {
+	for (int axis = 0; axis < 3; axis++) {
+		const uint16_t field = (map >> (3 * axis)) & 0b111;
+		const uint8_t source = field & 0b11;
+		// A source of 3 cannot come from the generator; keep the axis rather than
+		// read past the array.
+		const float value = in[source < 3 ? source : axis];
+		out[axis] = (field & 0b100) ? -value : value;
+	}
 }
 
 void MagDriver::scaleMagSample(
