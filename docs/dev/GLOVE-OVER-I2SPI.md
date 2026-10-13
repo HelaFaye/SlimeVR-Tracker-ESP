@@ -109,11 +109,14 @@ Sixteen sensors on one chain, per poll cycle:
 
 | | at 400 kHz I2C | at 1 MHz I2C |
 |---|---|---|
-| 16 arm writes (~3 bytes each) | 1.2 ms | 0.48 ms |
+| 16 arm writes (4 bytes each, address included) | 1.52 ms | 0.61 ms |
 | 16 FIFO reads over 4 MHz SPI | 0.64 ms | 0.64 ms |
-| **Total per cycle** | **~1.85 ms** | **~1.1 ms** |
-| As a fraction of a 200 Hz (5 ms) cycle | 37% | 22% |
-| As a fraction of a 100 Hz (10 ms) cycle | 18% | 11% |
+| **Total per cycle** | **~2.16 ms** | **~1.25 ms** |
+| As a fraction of a 200 Hz (5 ms) cycle | 43% | 25% |
+| As a fraction of a 100 Hz (10 ms) cycle | 22% | 12.5% |
+
+(Corrected 2026-10-13: the earlier figures left the I2C address byte out of each arm
+write. All figures are recomputed by `sim/check_numbers.py`.)
 
 Two conclusions. Run the glove chain at **Fast-mode Plus** — the wiring is short and
 low-capacitance, so 1 MHz is far easier here than on the 85 cm body cable. And run fingers
