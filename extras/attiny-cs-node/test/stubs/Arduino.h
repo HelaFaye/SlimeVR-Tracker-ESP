@@ -1,6 +1,6 @@
 #pragma once
-#include <stdint.h>
 #include <stddef.h>
+#include <stdint.h>
 #define LOW 0
 #define HIGH 1
 #define INPUT 0

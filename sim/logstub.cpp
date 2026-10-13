@@ -10,12 +10,12 @@ static void emit(const char* level, const char* fmt, va_list args) {
 	std::vprintf(fmt, args);
 	std::printf("\n");
 }
-#define IMPL(name, tag)                          \
+#define IMPL(name, tag)                             \
 	void Logger::name(const char* fmt, ...) const { \
-		va_list a;                               \
-		va_start(a, fmt);                        \
-		emit(tag, fmt, a);                       \
-		va_end(a);                               \
+		va_list a;                                  \
+		va_start(a, fmt);                           \
+		emit(tag, fmt, a);                          \
+		va_end(a);                                  \
 	}
 IMPL(trace, "trace")
 IMPL(debug, "debug")

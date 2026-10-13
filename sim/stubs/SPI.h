@@ -7,7 +7,9 @@
 
 struct SPISettings {
 	SPISettings(uint32_t c = 1000000, uint8_t b = MSBFIRST, uint8_t m = SPI_MODE3)
-		: _clock(c), _bitOrder(b), _dataMode(m) {}
+		: _clock(c)
+		, _bitOrder(b)
+		, _dataMode(m) {}
 	uint32_t _clock;
 	uint8_t _bitOrder;
 	uint8_t _dataMode;
