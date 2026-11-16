@@ -26,7 +26,9 @@
 #include <optional>
 
 #ifdef ESP32
-#include "driver/i2c.h"
+#include <driver/gpio.h>
+#include <esp_rom_gpio.h>
+#include <soc/i2c_periph.h>
 #endif
 
 std::optional<uint8_t> activeSCLPin;
@@ -34,6 +36,40 @@ std::optional<uint8_t> activeSDAPin;
 bool isI2CActive = false;
 
 namespace SlimeVR {
+#ifdef ESP32
+namespace {
+/// Move I2C0 (Wire) to other pins without restarting it: what the legacy driver's
+/// i2c_set_pin() does, done here through the GPIO matrix instead. Calling i2c_set_pin()
+/// links the legacy I2C driver, and from Arduino-ESP32 3.1 (ESP-IDF 5.3+) Wire uses the
+/// new i2c_master driver: ESP-IDF then aborts at start-up, before setup() ("CONFLICT!
+/// driver_ng is not allowed to be used with this old driver"), and the board reboots
+/// forever. Found by booting the ESP32-S3 build on Arduino-ESP32 3.3 in QEMU.
+void routeI2C0(uint8_t sdaPin, uint8_t sclPin) {
+	const i2c_signal_conn_t& signals = i2c_periph_signal[0];
+	const struct {
+		uint8_t pin;
+		uint8_t out;
+		uint8_t in;
+	} lines[] = {
+		{sdaPin, signals.sda_out_sig, signals.sda_in_sig},
+		{sclPin, signals.scl_out_sig, signals.scl_in_sig},
+	};
+	for (const auto& line : lines) {
+		const auto pin = static_cast<gpio_num_t>(line.pin);
+		gpio_set_level(pin, 1);
+		esp_rom_gpio_pad_select_gpio(line.pin);
+		gpio_set_direction(pin, GPIO_MODE_INPUT_OUTPUT_OD);
+		gpio_set_pull_mode(
+			pin,
+			GPIO_FLOATING
+		);  // as i2c_set_pin(..., false, false, ...)
+		esp_rom_gpio_connect_out_signal(line.pin, line.out, false, false);
+		esp_rom_gpio_connect_in_signal(line.pin, line.in, false);
+	}
+}
+}  // namespace
+#endif
+
 void swapI2C(uint8_t sclPin, uint8_t sdaPin) {
 	if (sclPin != activeSCLPin || sdaPin != activeSDAPin || !isI2CActive) {
 		Wire.flush();
@@ -52,7 +88,7 @@ void swapI2C(uint8_t sclPin, uint8_t sdaPin) {
 		}
 
 		if (isI2CActive) {
-			i2c_set_pin(I2C_NUM_0, sdaPin, sclPin, false, false, I2C_MODE_MASTER);
+			routeI2C0(sdaPin, sclPin);
 		} else {
 			Wire.begin(static_cast<int>(sdaPin), static_cast<int>(sclPin), I2C_SPEED);
 			Wire.setTimeOut(150);

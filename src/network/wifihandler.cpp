@@ -85,7 +85,9 @@ void WiFiNetwork::setUp() {
 		getPassword().length()
 	);
 
-	trySavedCredentials();
+	if (!trySavedCredentials()) {
+		tryHardcodedCredentials();
+	}
 
 #if ESP8266
 #if POWERSAVING_MODE == POWER_SAVING_NONE
@@ -293,7 +295,10 @@ bool WiFiNetwork::trySavedCredentials() {
 	if (getSSID().length() == 0) {
 		wifiHandlerLogger.debug("Skipping saved credentials attempt on 0-length SSID..."
 		);
-		wifiState = WiFiReconnectionStatus::HardcodeAttempt;
+		// Not HardcodeAttempt: tryHardcodedCredentials() reads that as "the hardcoded
+		// attempt failed", so with nothing saved the hardcoded credentials were never
+		// tried, only retried late in PHY mode G. Found booting the S3 in QEMU.
+		wifiState = WiFiReconnectionStatus::SavedAttempt;
 		return false;
 	}
 
