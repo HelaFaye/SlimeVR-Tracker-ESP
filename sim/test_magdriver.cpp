@@ -316,6 +316,44 @@ static void failedRead() {
 	);
 }
 
+static void axisMapping() {
+	std::printf("\n== Axis mapping into the IMU frame ==\n");
+	const float in[3] = {1.0f, 2.0f, 3.0f};
+	float out[3];
+	MagDriver::applyAxisMap(MagDriver::AxisMapIdentity, in, out);
+	check(
+		out[0] == 1 && out[1] == 2 && out[2] == 3,
+		"identity leaves the sample alone"
+	);
+	// "+Y-X+Z": IMU X = +mag Y, IMU Y = -mag X, IMU Z = +mag Z (from the generator).
+	const uint16_t yNegXZ = 1 | (4 | 0) << 3 | 2 << 6;
+	MagDriver::applyAxisMap(yNegXZ, in, out);
+	check(
+		out[0] == 2 && out[1] == -1 && out[2] == 3,
+		"+Y-X+Z maps (1,2,3) to (2,-1,3)"
+	);
+
+	FakeMag lis;
+	lis.regs[0x0f] = 0x3d;
+	lis.regs[0x28] = 0xba;  // X = +6842 (1 G)
+	lis.regs[0x29] = 0x1a;
+	MagDriver driver;
+	driver.init(lis.interface(MagTransport::Spi), false);
+	driver.setAxisMap(yNegXZ);
+	driver.setPollingEnabled(true);
+	float sample[3] = {0, 0, 0};
+	g_micros += 20'000;
+	driver.poll(g_micros, 0.01f, [&](const float s[3]) {
+		sample[0] = s[0];
+		sample[1] = s[1];
+		sample[2] = s[2];
+	});
+	check(
+		near(sample[0], 0.0f) && near(sample[1], -100.0f) && near(sample[2], 0.0f),
+		"poll applies the map: a field on mag X appears on IMU -Y"
+	);
+}
+
 int main() {
 	mmc5983maOverSpi();
 	lis3mdlOverSpiAndAux();
@@ -323,6 +361,7 @@ int main() {
 	noMagnetometer();
 	scalingEdges();
 	failedRead();
+	axisMapping();
 	std::printf("\n%d checks, %d failed\n", checks, failures);
 	return failures ? 1 : 0;
 }

@@ -4,6 +4,25 @@ Newest first. Each entry says what changed, what was verified, and what is still
 
 ---
 
+## 2026-10-13d — Mag axis mapping, pull-up sizing, C5 hub probe, upstream drafts
+
+- **Magnetometer axis mapping.** `"mag": {"axes": "+Y-X+Z"}` maps a mag's axes into the IMU
+  chip's frame, for SPI mags and, with no `cs`, for aux-port mags. The generator refuses
+  mirror images. Tested on the host; a C5 chain-hub build with remapped mags compiles.
+- **Chain pull-ups** (hardware repo, branch `feat/chain-pullups`). The 2.2 kΩ default
+  suits the reference build (~81 pF of ~160 pF). `BOARD-SPECS.md` now tabulates the longest
+  cable per node count at 2.2 kΩ and 1 kΩ, and `gen/check_chain_pullups.py` recomputes it
+  from `gen/boards.py`.
+- **C5 hub.** mitzey234's receiver reaches the PC as a USB HID device, and the C5 has no
+  USB OTG. So instead of a port, `extras/c5-espnow-probe` (builds, not yet run) answers the
+  radio questions first: ESP-NOW on 5 GHz, loss per band, announced channel switches.
+  `E22-AND-C5-HUB.md` §3.4 lays out the PC-link options and recommends C5 radio + S3 USB.
+- **Upstream.** `UPSTREAM-DRAFTS.md` holds two messages to post: a comment on #465, which
+  still has the toggle-ordering bug fixed here, offering the SPI transport as a follow-up;
+  and a note to unlogisch04 about the C5 port. Not posted.
+
+---
+
 ## 2026-10-13c — Double-check: first real C5 builds, review fixes, corrected limits
 
 **The ESP32-C5 boards build for the first time.** PlatformIO now works here through GitHub

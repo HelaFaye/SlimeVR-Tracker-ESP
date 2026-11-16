@@ -301,11 +301,17 @@ In both cases the host polls the mag at the IMU driver's `MagTs` (100 Hz on the
 ICM-45686, 120 Hz on the LSM6DSO/DSR/DSV), because VQF assumes a fixed period. Samples are
 not taken from the IMU FIFO.
 
-**Orientation and calibration.** The firmware feeds the mag's own axes to the fusion,
-which assumes they match the IMU's. Lay the mag out with its X, Y and Z parallel to the
-IMU's, with the same signs: there is no per-mag axis remap yet. Nor is there hard-iron or
-soft-iron calibration for SoftFusion mags, so keep them away from the battery, speakers
-and ferrous parts.
+**Orientation.** The fusion works in the IMU chip's frame, so the mag's axes must be mapped
+into it. Read both chips' axis diagrams and give the mapping as IMU X, Y, Z:
+`"mag": {"cs": ..., "axes": "+Y-X+Z"}` means IMU X = +mag Y, IMU Y = −mag X, IMU Z = +mag Z.
+The default is `+X+Y+Z`, so a mag laid out parallel to its IMU needs nothing. For a mag
+behind the IMU's aux port (A), give `"axes"` without a `cs`. The generator refuses a
+mapping that is a mirror image rather than a rotation: both chips are right-handed, so one
+means a sign is wrong. Check it at bring-up: rotate the tracker about each IMU axis in
+turn, and the field should turn the same way the gyro does.
+
+**Calibration.** There is no hard-iron or soft-iron calibration for SoftFusion mags yet, so
+keep them away from the battery, speakers and ferrous parts.
 
 ### 4.6 What bypasses the node
 
@@ -831,8 +837,8 @@ compilation and static checks. Settle these at bring-up:
   `I2CM_RESTART_EN = 1` first (`icm45base.h`).
 - **SPI clock on cable.** 4 MHz is the conservative start. The usable ceiling for a given
   length is a measurement, not a calculation.
-- **Magnetometer orientation and calibration.** No per-mag axis remap and no hard- or
-  soft-iron calibration yet (§4.5).
+- **Magnetometer calibration.** No hard- or soft-iron calibration yet (§4.5). The axis
+  mapping exists but is unproven on hardware.
 - **Deliberately unsupported:** hot-plug; runtime node ids; bulk transfer through a node;
   more than one gated signal per channel; any pinout other than §2.1.
 
@@ -911,12 +917,13 @@ compilation and static checks. Settle these at bring-up:
     "node": 3, "address": 104 },
   { "protocol": "SPI", "imu": "IMU_ICM45686", "rotation": "DEG_0",
     "cs":  { "type": "attiny", "node": 4 },
-    "mag": { "cs": { "type": "attiny", "node": 4, "channel": 1 } } }
+    "mag": { "cs": { "type": "attiny", "node": 4, "channel": 1 }, "axes": "+Y-X+Z" } }
 ]
 ```
 
 `"mag"` adds an SPI magnetometer on its own chip select (§4.5 B), fused with that sensor.
-Its `cs` takes the same forms as a sensor's, a host pin included.
+Its `cs` takes the same forms as a sensor's, a host pin included. `"axes"` maps the mag's
+axes onto the IMU's (§4.5); without a `cs` it maps an aux-port mag.
 
 Omit `strobe` for software-CS bring-up. Omit `baseAddress` to use the default. For several
 chains, make `REMOTE_CS` a map of named chains and add `"chain": "<name>"` to each sensor

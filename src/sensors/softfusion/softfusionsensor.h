@@ -164,7 +164,10 @@ public:
 		// A magnetometer on its own chip select (SPI), polled by the host. When set it
 		// takes precedence over one behind the IMU's aux master. Any SoftFusion IMU can
 		// use one, not only those with an aux master.
-		RegisterInterface* magInterface = nullptr
+		RegisterInterface* magInterface = nullptr,
+		// How the magnetometer's axes map onto the IMU's (MagDriver::setAxisMap).
+		// Applies to an aux-port mag as well as one on its own chip select.
+		uint16_t magAxes = SoftFusion::MagDriver::AxisMapIdentity
 	)
 		: Sensor(
 			SensorType::Name,
@@ -181,7 +184,9 @@ public:
 			  SensorType::MagTs
 		  )
 		, m_sensor(registerInterface, m_Logger)
-		, m_magInterface(magInterface) {}
+		, m_magInterface(magInterface) {
+		magDriver.setAxisMap(magAxes);
+	}
 	~SoftFusionSensor() override = default;
 
 	void checkSensorTimeout() {

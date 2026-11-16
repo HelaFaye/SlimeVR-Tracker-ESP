@@ -283,11 +283,51 @@ def _format_mag(mag: dict, spi_buses: dict, chains: dict) -> str:
     )
 
 
+# MagDriver::AxisMapIdentity: IMU X, Y, Z take mag X, Y, Z.
+MAG_AXES_IDENTITY = (0 << 0) | (1 << 3) | (2 << 6)
+
+
+def _mag_axes(axes: str) -> int:
+    """Encode "+Y-X+Z" (IMU X = +mag Y, IMU Y = -mag X, IMU Z = +mag Z) the way
+    MagDriver::setAxisMap() reads it: per IMU axis, 3 bits = mag axis | negate << 2.
+
+    Both chips are right-handed, so a valid mapping is a rotation. A mirror image
+    (determinant -1) means one sign or axis is wrong, and would make the fusion fight
+    the magnetometer, so it is refused rather than built."""
+    m = re.fullmatch(r"([+-])([XYZ])([+-])([XYZ])([+-])([XYZ])", axes or "")
+    if not m:
+        raise ValueError(f"magnetometer axes {axes!r}: expected three signed axes, e.g. '+Y-X+Z'")
+    pairs = [(m.group(2 * i + 1), "XYZ".index(m.group(2 * i + 2))) for i in range(3)]
+    if sorted(src for _, src in pairs) != [0, 1, 2]:
+        raise ValueError(f"magnetometer axes {axes!r}: each of X, Y and Z must appear once")
+    matrix = [[0] * 3 for _ in range(3)]
+    for row, (sign, src) in enumerate(pairs):
+        matrix[row][src] = -1 if sign == "-" else 1
+    det = (matrix[0][0] * (matrix[1][1] * matrix[2][2] - matrix[1][2] * matrix[2][1])
+           - matrix[0][1] * (matrix[1][0] * matrix[2][2] - matrix[1][2] * matrix[2][0])
+           + matrix[0][2] * (matrix[1][0] * matrix[2][1] - matrix[1][1] * matrix[2][0]))
+    if det != 1:
+        raise ValueError(
+            f"magnetometer axes {axes!r} describe a mirror image, not a rotation; "
+            "flip one sign")
+    return sum((src | (4 if sign == "-" else 0)) << (3 * i) for i, (sign, src) in enumerate(pairs))
+
+
 def _desc_entry(params: List[str], sensor: dict, spi_buses: dict, chains: dict) -> str:
-    """SENSOR_DESC_ENTRY(...), with SPI_MAG(...) appended when the sensor has a "mag".
+    """SENSOR_DESC_ENTRY(...), with the magnetometer arguments appended when the sensor
+    has a "mag": SPI_MAG(...) for one on its own chip select (or nullptr for one behind
+    the IMU's aux port), then the encoded axis map if it is not the identity.
     params must already hold all seven positional arguments, extraParam included."""
-    if sensor.get('mag'):
-        params = [*params, _format_mag(sensor['mag'], spi_buses, chains)]
+    mag = sensor.get('mag')
+    if mag:
+        if mag.get('cs') is None and any(k in mag for k in ('bus', 'clock', 'mode')):
+            raise ValueError("magnetometer bus, clock and mode need a cs; without one the "
+                             "entry only maps the axes of the IMU's aux-port mag")
+        interface = _format_mag(mag, spi_buses, chains) if mag.get('cs') is not None else 'nullptr'
+        axes = _mag_axes(mag['axes']) if 'axes' in mag else MAG_AXES_IDENTITY
+        params = [*params, interface]
+        if axes != MAG_AXES_IDENTITY:
+            params.append(str(axes))
     return f"SENSOR_DESC_ENTRY({','.join(params)})"
 
 
