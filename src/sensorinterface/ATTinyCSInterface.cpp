@@ -133,6 +133,25 @@ bool ATTinyCSBus::init() {
 		);
 	}
 
+	// Nodes power up in strobe mode and ignore SET_CS until told otherwise. With no
+	// strobe conductor, every SET_CS this host sends would be dropped and every sensor
+	// on the chain would read as absent.
+	if (!usesStrobe()) {
+		for (uint8_t node = MinNodeId; node <= MaxNodeId; node++) {
+			if (isNodePresent(node)
+				&& !writeFrame(
+					Command::SetMode,
+					packTarget(node, DefaultChannel),
+					static_cast<uint8_t>(CsMode::Software)
+				)) {
+				m_Logger.error(
+					"Failed to put ATtiny CS node %d in software CS mode",
+					node
+				);
+			}
+		}
+	}
+
 	stageSensorPowerUp();
 
 	// Always true: a chain with no nodes has to surface as "sensor not found" via

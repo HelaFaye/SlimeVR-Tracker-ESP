@@ -533,6 +533,34 @@ void scenarioMisflashedNode() {
 	check(g_chain.failures == 0, "mismatch does not corrupt the bus");
 }
 
+void scenarioSoftwareCs() {
+	std::printf("\n== Software CS: no strobe conductor ==\n");
+	resetChain(2);
+
+	// Nodes power up in strobe mode and drop SET_CS until SET_MODE puts them in
+	// software mode. Without that, every sensor on a strobe-less chain is absent.
+	SlimeVR::ATTinyCSBus bus(4, 5, SlimeVR::ATTinyCS::DefaultBaseAddress, -1);
+	bus.init();
+
+	SlimeVR::DirectSPIInterface
+		spi(&SPI, SPISettings(4000000, MSBFIRST, SPI_MODE3), 10, 11, 12);
+	spi.init();
+	SlimeVR::ATTinyCSPinInterface p1(&bus, 1, 0);
+	SlimeVR::ATTinyCSPinInterface p2(&bus, 2, 0);
+	SlimeVR::Sensors::SPIImpl imu1(&spi, &p1);
+	SlimeVR::Sensors::SPIImpl imu2(&spi, &p2);
+
+	check(
+		g_chain.nodes[0].mode == SlimeVR::ATTinyCS::CsMode::Software
+			&& g_chain.nodes[1].mode == SlimeVR::ATTinyCS::CsMode::Software,
+		"bring-up puts every present node in software mode"
+	);
+	check(imu1.readReg(0x72) == 0xE9, "WHO_AM_I reads 0xE9 through node 1, no strobe");
+	check(imu2.readReg(0x72) == 0xE9, "WHO_AM_I reads 0xE9 through node 2, no strobe");
+	check(g_chain.stats.strobeToggles == 0, "the strobe is never touched");
+	check(g_chain.failures == 0, "one-hot held");
+}
+
 }  // namespace
 
 int main() {
@@ -553,6 +581,7 @@ int main() {
 	scenarioFailedArmLeavesNoWireSensorListening();
 	scenarioTwoChainsShareOneBus();
 	scenarioMisflashedNode();
+	scenarioSoftwareCs();
 
 	std::printf("\n%d checks, %d failed\n", checks, failed);
 	return failed == 0 ? 0 : 1;

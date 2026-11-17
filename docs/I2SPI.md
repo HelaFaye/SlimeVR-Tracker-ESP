@@ -485,7 +485,10 @@ On `init()`, for each chain, a host **MUST**:
    read returns 4 bytes, magic `0x5C`, **and** version equal to the host's. A host **MUST**
    refuse a node reporting another version: log an error and treat its sensor as absent,
    never power or arm it. Log an error if the reported id differs from the probed id.
-6. For each present node, in id order: `SET_SENSOR_POWER 1`, then wait
+6. If the chain has **no strobe conductor**, send `SET_MODE 0` to each present node.
+   Nodes power up in strobe mode and ignore `SET_CS` until then (§8.3), so skipping this
+   leaves every sensor on the chain unreachable.
+7. For each present node, in id order: `SET_SENSOR_POWER 1`, then wait
    **`SensorPowerOnSettleMillis`** (15 ms) before the next. One at a time, not a
    broadcast: a shorted sensor becomes attributable to a node id, and inrush is spread over
    milliseconds instead of summed at the end of a metre of thin cable (DEC-014).
@@ -653,6 +656,7 @@ need the firmware and hardware themselves.
 | H7 | One-hot across chains sharing a bus | 11 | sim: two chains on one bus |
 | H8 | Chain address from the shared constant, whitelisted | 5.1 | `sim/check_board_config.py` |
 | H9 | Generated sensor descriptors type-check | — | `sim/check_desc_list.py` |
+| H10 | Puts every present node in software mode when there is no strobe | 9.1 | sim: software CS |
 
 Run everything with `./VERIFY.sh`; CI runs it on every pull request.
 
