@@ -46,6 +46,17 @@ namespace I2CSCAN {
 		std::array<std::string, 9> portMap = {"0", "1", "4", "5", "6", "8", "9", "10", "24"};
 		std::array<uint8_t, 13> portExclude
 			= {2, 3, 7, 11, 12, 13, 14, 15, 25, 26, 27, 28, LED_PIN};
+#elif defined(ESP32S3)
+		// ESP32-S3: not the classic ESP32's table, which probed GPIO22-25 (the S3 has
+		// none: "Invalid pin" and a failed Wire.begin) and GPIO26-32 (the S3's SPI flash
+		// and PSRAM). Left out:
+		//  0, 3, 45, 46  strapping
+		//  19, 20        USB D-/D+
+		//  26-32         SPI flash and quad PSRAM; 33-37 octal PSRAM (R8 modules)
+		//  39-42         JTAG; 43, 44 the UART0 console
+		std::array<uint8_t, 18> portArray = {1, 2, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 21};
+		std::array<std::string, 18> portMap = {"1", "2", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "21"};
+		std::array<uint8_t, 1> portExclude = {LED_PIN};
 #elif defined(ESP32)
 		std::array<uint8_t, 16> portArray = {4, 13, 14, 15, 16, 17, 18, 19, 21, 22, 23, 25, 26, 27, 32, 33};
 		std::array<std::string, 16> portMap = {"4", "13", "14", "15", "16", "17", "18", "19", "21", "22", "23", "25", "26", "27", "32", "33"};
@@ -134,7 +145,12 @@ namespace I2CSCAN {
 
 #ifdef ESP32
 		if (currentAddress == 1) {
-            Wire.end();
+			// Restart the bus on this pair. Ending it alone left every probe on the
+			// pair failing: from Arduino-ESP32 3.x, Wire.end() frees the transmit
+			// buffer, so each endTransmission() logged "NULL TX buffer pointer" and
+			// nothing was ever found. Found booting the S3 build in QEMU.
+			Wire.end();
+			Wire.begin((int)validPorts[currentSDA], (int)validPorts[currentSCL]); //NOLINT
 		}
 #endif
 
