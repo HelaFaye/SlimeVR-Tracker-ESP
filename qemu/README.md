@@ -26,15 +26,27 @@ host code through an empty chain (`No ATtiny CS nodes answered`).
 
 [HelaFaye/qemu_esp32](https://github.com/HelaFaye/qemu_esp32) carries a patch series on
 Espressif's QEMU that adds the S3's GPIO matrix, SPI and I2C masters, Wi-Fi with an
-emulated access point, the RMT, and (patch 0024) emulated **ICM-45686s** and **I2SPI
-chains**. Its test cases build this firmware and check it against a stand-in SlimeVR
-server:
+emulated access point, the RMT, emulated **ICM-45686s** on I2C or SPI, and **I2SPI
+chains**. `qemu/s3.sh` clones it at the commit pinned in `qemu/QEMU_ESP32`, builds its
+QEMU, builds `BOARD_ESP32S3_SUPERMINI` from this checkout and runs two checks against a
+stand-in SlimeVR server on the host:
 
-- `firmware/slimevr/`: the `BOARD_ESP32S3_SUPERMINI` build boots, hashes its own image,
-  drives its LED through the RMT, saves its configuration, joins Wi-Fi, finds the server
-  by broadcast and stays connected.
-- `firmware/slimevr-i2spi/`: the same build with its IMUs on I2SPI chains, one image per
-  board configuration in `configs/` (through `SLIMEVR_OVERRIDE_DEFAULTS`):
+```sh
+qemu/s3.sh                           # everything; work in .pio/qemu-s3
+S3_CHECKS=i2spi I2SPI_SCENARIOS="rj45-hub software-cs" qemu/s3.sh
+QEMU_XTENSA=/path/to/qemu-system-xtensa qemu/s3.sh   # skip building QEMU
+```
+
+It needs PlatformIO, `esptool`, and QEMU's build dependencies (`ninja`, glib, pixman,
+libgcrypt, libslirp). CI runs it as the `qemu-s3` job. To move to a newer qemu_esp32,
+change the commit in `qemu/QEMU_ESP32`.
+
+- `check_tracker.py`: the build as it is, with its two ICM-45686s on I2C. It boots,
+  hashes its own image, drives its LED through the RMT, saves its configuration, finds
+  and calibrates both IMUs, joins Wi-Fi, finds the server by broadcast, and streams
+  rotations that follow the IMUs as they're turned (within 5 degrees).
+- `check_i2spi.py`: the same build with its IMUs on I2SPI chains, one image per board
+  configuration in `qemu/i2spi/` (through `SLIMEVR_OVERRIDE_DEFAULTS`):
 
 | Scenario | Configuration | Shows |
 |---|---|---|

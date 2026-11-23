@@ -593,3 +593,23 @@ of both parts. The generator and descriptor type checks cover `SPI_MAG`.
 
 **Unverified:** any of it on hardware, and the firmware build, which runs only in CI
 here. Register values come from the MMC5983MA datasheet and ST's LIS3MDL driver.
+
+## DEC-018 — Board ids 29, 30 and 31 for the C5 boards
+
+**Decision.** `BOARD_ESP32C5_DEVKITC1` is 29, `BOARD_ESP32C5_RJ45_HUB` 30 and
+`BOARD_SLIMEVR_C5_CHAIN_HUB` 31. They were 28, 29 and 30 until upstream took 28 for
+`BOARD_TTGO_TOI_PLUS` (SlimeVR/SlimeVR-Tracker-ESP#551).
+
+**Why these.** Board ids go over the wire to the server, so two firmwares sharing one id
+mislabel each other's trackers. Surveyed 2026-11-23: upstream `consts.h` ends at 28; the
+SolarXR protocol's `BoardType` (`schema/datatypes/hardware_info.fbs`) ends at 26, behind
+the firmware; no open PR on the tracker or the server claims 29 or above (#507 claims
+24, already taken). unlogisch04's `esp32_tasmota` branch gives its C5 devkit **23**,
+which upstream already uses for `BOARD_ESP32S3_SUPERMINI`: that fork, not this one, is
+out of step. Nothing claims 29–31.
+
+**Until upstream assigns them** they are provisional. Ids are only settled when they're
+in upstream's `consts.h` and SolarXR's `BoardType`. Ask for them when C5 support is
+proposed upstream (`UPSTREAM-DRAFTS.md` draft 2), and point unlogisch04 at the clash.
+Not checked: the SlimeVR server's own board table (not found where expected) and the
+nRF firmware's.

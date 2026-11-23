@@ -36,10 +36,10 @@ jobs:
     # exhaustive topology sweep (3^15 chain configurations, about two and a half minutes).
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
@@ -54,6 +54,47 @@ jobs:
 
       - name: Exhaustive topology sweep
         run: sim/sweep.sh
+
+  qemu-s3:
+    # The firmware on an emulated ESP32-S3 SuperMini (HelaFaye/qemu_esp32, pinned in
+    # qemu/QEMU_ESP32): two I2C IMUs streaming to a stand-in server, then nine I2SPI
+    # configurations and faults with emulated nodes and SPI IMUs. See qemu/README.md.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - uses: actions/cache@v6
+        id: qemu-cache
+        with:
+          path: ${{ runner.temp }}/qemu-s3/qemu-dist
+          key: qemu-esp32-${{ hashFiles('qemu/QEMU_ESP32') }}
+
+      - name: Tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build libglib2.0-dev libpixman-1-dev libgcrypt20-dev libslirp-dev flex bison
+          python -m pip install --upgrade platformio esptool
+
+      - name: Build QEMU
+        if: steps.qemu-cache.outputs.cache-hit != 'true'
+        run: S3_CHECKS=none qemu/s3.sh "$RUNNER_TEMP/qemu-s3"
+
+      - name: Build and check
+        env:
+          QEMU_XTENSA: ${{ runner.temp }}/qemu-s3/qemu-dist/qemu-system-xtensa
+          QEMU_BIOS: ${{ runner.temp }}/qemu-s3/qemu-dist/bios
+        run: qemu/s3.sh "$RUNNER_TEMP/qemu-s3"
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: qemu-s3-logs
+          path: ${{ runner.temp }}/qemu-s3/run
 
   build:
     runs-on: ubuntu-latest

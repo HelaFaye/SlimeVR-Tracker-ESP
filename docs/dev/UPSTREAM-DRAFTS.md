@@ -70,6 +70,9 @@ build.
 > 2. Would upstream want C5 support before or after #534 (the Wi-Fi strategy refactor)?
 >    The band-mode call would move into `WiFiCommunication` either way.
 > 3. Any objection to pinning a pioarduino release rather than `stable`?
+> 4. Board ids: your branch gives the C5 devkit 23, which main now uses for
+>    `BOARD_ESP32S3_SUPERMINI`. I've provisionally used 29-31 for three C5 boards (main
+>    ends at 28). Shall we agree on ids before either of us proposes them?
 >
 > Fork: https://github.com/HelaFaye/SlimeVR-Tracker-ESP (see `docs/dev/DECISIONS.md`
 > DEC-001/002 for the platform and band choices).

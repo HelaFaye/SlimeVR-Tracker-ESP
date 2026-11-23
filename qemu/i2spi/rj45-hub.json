@@ -1,0 +1,64 @@
+{
+  "SPI": {
+    "sck": "12",
+    "miso": "13",
+    "mosi": "11",
+    "clock": 4000000,
+    "bitOrder": "MSBFIRST",
+    "mode": "SPI_MODE3"
+  },
+  "REMOTE_CS": {
+    "scl": "9",
+    "sda": "8",
+    "strobe": "10"
+  },
+  "SENSORS": [
+    {
+      "protocol": "SPI",
+      "imu": "IMU_ICM45686",
+      "rotation": "DEG_270",
+      "cs": {
+        "type": "attiny",
+        "node": 1
+      }
+    },
+    {
+      "protocol": "SPI",
+      "imu": "IMU_ICM45686",
+      "rotation": "DEG_270",
+      "cs": {
+        "type": "attiny",
+        "node": 2
+      }
+    },
+    {
+      "protocol": "SPI",
+      "imu": "IMU_ICM45686",
+      "rotation": "DEG_270",
+      "cs": {
+        "type": "attiny",
+        "node": 3
+      }
+    },
+    {
+      "protocol": "SPI",
+      "imu": "IMU_ICM45686",
+      "rotation": "DEG_270",
+      "cs": {
+        "type": "attiny",
+        "node": 4
+      }
+    }
+  ],
+  "BATTERY": {
+    "type": "BAT_EXTERNAL",
+    "r1": 10,
+    "r2": 40.2,
+    "shieldR": 0,
+    "pin": "A2"
+  },
+  "LED": {
+    "LED_PIN": "LED_BUILTIN",
+    "LED_INVERTED": true
+  }
+}

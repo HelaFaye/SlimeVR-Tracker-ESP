@@ -904,7 +904,7 @@ compilation and static checks. Settle these at bring-up:
 | Address map and whitelist derivation | `sim/i2c_address_map.py` |
 | Board/descriptor checks | `sim/check_board_config.py`, `sim/check_desc_list.py`, `sim/check_numbers.py` |
 | Boot test in QEMU | `qemu/run.sh` (`chain` scenario) |
-| Firmware against emulated nodes and ICM-45686s | [qemu_esp32](https://github.com/HelaFaye/qemu_esp32) `firmware/slimevr-i2spi/` (see `qemu/README.md`) |
+| Firmware against emulated nodes and ICM-45686s | `qemu/s3.sh`, `qemu/check_i2spi.py`, `qemu/i2spi/` (see `qemu/README.md`) |
 | Cable and electrical notes, node MCU survey | `docs/dev/HARDWARE-RJ45-SPI-BUS.md` |
 | Example build (5 hubs, 8 nodes) | `docs/dev/EXAMPLE-18POINT-BUILD.md` |
 | Hub and node boards, KiCad generator | [SlimeVR-Tracker-ESP-Hardware](https://github.com/HelaFaye/SlimeVR-Tracker-ESP-Hardware) |
