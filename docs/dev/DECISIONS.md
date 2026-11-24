@@ -611,5 +611,8 @@ out of step. Nothing claims 29–31.
 **Until upstream assigns them** they are provisional. Ids are only settled when they're
 in upstream's `consts.h` and SolarXR's `BoardType`. Ask for them when C5 support is
 proposed upstream (`UPSTREAM-DRAFTS.md` draft 2), and point unlogisch04 at the clash.
-Not checked: the SlimeVR server's own board table (not found where expected) and the
-nRF firmware's.
+The server's own table (`BoardType` in
+`server/core/src/main/java/dev/slimevr/tracking/trackers/udp/FirmwareConstants.kt`, in
+upstream and in the HelaFaye/slimevr-server fork) also ends at 26, as SolarXR does: it
+knows neither upstream's 27 and 28 nor these, and shows them as unknown boards. Nothing
+there needs renumbering. Not checked: the nRF firmware's ids.
