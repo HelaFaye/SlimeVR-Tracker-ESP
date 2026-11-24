@@ -11,7 +11,8 @@
 # emulated access point's open network, "Open Wifi", without touching platformio.ini.
 #
 #   qemu/s3.sh [WORKDIR]            (default .pio/qemu-s3)
-#   S3_CHECKS="tracker" or "i2spi" runs one half; I2SPI_SCENARIOS="rj45-hub ..." a subset.
+#   S3_CHECKS="tracker" or "i2spi" runs one half; I2SPI_SCENARIOS="rj45-hub ..." a subset;
+#   QEMU_ESP32=DIR uses your own qemu_esp32 checkout instead of the pinned one.
 set -eu
 HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$HERE/.." && pwd)
@@ -21,14 +22,19 @@ PLATFORM=https://github.com/pioarduino/platform-espressif32/releases/download/55
 CHECKS=${S3_CHECKS:-tracker i2spi}
 
 # 1. qemu_esp32 and its QEMU
-read -r QURL QCOMMIT < "$HERE/QEMU_ESP32"
-QEMU_ESP32="$WORK/qemu_esp32"
-if [ ! -d "$QEMU_ESP32/.git" ]; then
-    git init -q "$QEMU_ESP32"
-    git -C "$QEMU_ESP32" remote add origin "$QURL"
+# QEMU_ESP32=/path/to/your/qemu_esp32 uses your own checkout as it is (to try a QEMU
+# change against this firmware) instead of the pinned clone.
+if [ -z "${QEMU_ESP32:-}" ]; then
+    read -r QURL QCOMMIT < "$HERE/QEMU_ESP32"
+    QEMU_ESP32="$WORK/qemu_esp32"
+    if [ ! -d "$QEMU_ESP32/.git" ]; then
+        git init -q "$QEMU_ESP32"
+        git -C "$QEMU_ESP32" remote add origin "$QURL"
+    fi
+    git -C "$QEMU_ESP32" fetch -q --depth 1 origin "$QCOMMIT"
+    git -C "$QEMU_ESP32" checkout -q -f "$QCOMMIT"
 fi
-git -C "$QEMU_ESP32" fetch -q --depth 1 origin "$QCOMMIT"
-git -C "$QEMU_ESP32" checkout -q -f "$QCOMMIT"
+QEMU_ESP32=$(cd "$QEMU_ESP32" && pwd)
 export QEMU_ESP32
 if [ -z "${QEMU_XTENSA:-}" ]; then
     # The binary and its ROMs, in qemu-dist: all a run needs, and what CI caches

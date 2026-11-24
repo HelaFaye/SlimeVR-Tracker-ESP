@@ -39,7 +39,8 @@ QEMU_XTENSA=/path/to/qemu-system-xtensa qemu/s3.sh   # skip building QEMU
 
 It needs PlatformIO, `esptool`, and QEMU's build dependencies (`ninja`, glib, pixman,
 libgcrypt, libslirp). CI runs it as the `qemu-s3` job. To move to a newer qemu_esp32,
-change the commit in `qemu/QEMU_ESP32`.
+change the commit in `qemu/QEMU_ESP32`. To try your own qemu_esp32 checkout (a QEMU
+change against this firmware) without touching the pin, set `QEMU_ESP32=/path/to/it`.
 
 - `check_tracker.py`: the build as it is, with its two ICM-45686s on I2C. It boots,
   hashes its own image, drives its LED through the RMT, saves its configuration, finds
